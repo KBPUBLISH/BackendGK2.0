@@ -17,6 +17,7 @@ connectDB();
 app.use('/api/books', require('./routes/books'));
 app.use('/api/pages', require('./routes/pages'));
 app.use('/api/playlists', require('./routes/playlists'));
+app.use('/api/categories', require('./routes/categories'));
 app.use('/api/upload', require('./routes/upload'));
 
 app.get('/', (req, res) => {

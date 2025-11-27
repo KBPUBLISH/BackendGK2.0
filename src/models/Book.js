@@ -19,7 +19,6 @@ const bookSchema = new mongoose.Schema({
     },
     category: {
         type: String,
-        enum: ['Bible Stories', 'Prayers', 'Songs', 'Devotionals', 'Activities', 'Other'],
         default: 'Other',
     },
     coverImage: {
