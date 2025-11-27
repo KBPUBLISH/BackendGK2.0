@@ -20,12 +20,18 @@ router.post('/', async (req, res) => {
         content: req.body.content,
         imageUrl: req.body.imageUrl,
         audioUrl: req.body.audioUrl,
+        backgroundUrl: req.body.backgroundUrl,
+        backgroundType: req.body.backgroundType,
+        scrollUrl: req.body.scrollUrl,
+        scrollHeight: req.body.scrollHeight,
+        textBoxes: req.body.textBoxes,
     });
 
     try {
         const newPage = await page.save();
         res.status(201).json(newPage);
     } catch (error) {
+        console.error('Error saving page:', error);
         res.status(400).json({ message: error.message });
     }
 });

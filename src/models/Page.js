@@ -19,9 +19,13 @@ const pageSchema = new mongoose.Schema({
     scrollHeight: { type: Number }, // Height in px for scroll overlay
     textBoxes: [{
         text: String,
-        x: Number,
-        y: Number,
+        x: Number, // percentage (0-100)
+        y: Number, // percentage (0-100)
+        width: { type: Number, default: 30 }, // percentage (0-100)
         alignment: { type: String, enum: ['left', 'center', 'right'], default: 'left' },
+        fontFamily: { type: String, default: 'Comic Sans MS' },
+        fontSize: { type: Number, default: 24 },
+        color: { type: String, default: '#4a3b2a' },
     }],
     imageUrl: { type: String }, // legacy field (keep for backward compatibility)
     audioUrl: { type: String }, // URL to GCS (narration)
