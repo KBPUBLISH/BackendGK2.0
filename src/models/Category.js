@@ -29,7 +29,9 @@ const categorySchema = new mongoose.Schema({
 
 categorySchema.pre('save', function(next) {
     this.updatedAt = Date.now();
-    next();
+    if (typeof next === 'function') {
+        next();
+    }
 });
 
 module.exports = mongoose.model('Category', categorySchema);

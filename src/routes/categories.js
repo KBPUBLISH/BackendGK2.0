@@ -28,7 +28,18 @@ router.get('/:id', async (req, res) => {
 // Create category
 router.post('/', async (req, res) => {
     try {
+        const mongoose = require('mongoose');
+        
+        // Check if MongoDB is connected
+        if (mongoose.connection.readyState !== 1) {
+            return res.status(503).json({ error: 'Database not connected' });
+        }
+        
         const { name, description, color, icon } = req.body;
+        
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Category name is required' });
+        }
         
         // Check if category already exists
         const existing = await Category.findOne({ name: name.trim() });
@@ -38,18 +49,19 @@ router.post('/', async (req, res) => {
 
         const category = new Category({
             name: name.trim(),
-            description,
+            description: description || '',
             color: color || '#6366f1',
-            icon,
+            icon: icon || '',
         });
 
         await category.save();
         res.status(201).json(category);
     } catch (error) {
+        console.error('Category creation error:', error);
         if (error.code === 11000) {
             res.status(400).json({ error: 'Category name must be unique' });
         } else {
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ error: error.message || 'Failed to create category' });
         }
     }
 });

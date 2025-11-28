@@ -20,7 +20,7 @@ const upload = multer({
 });
 
 // Helper function to save file locally with organized structure
-const saveFileLocally = (file, gcsPath) => {
+const saveFileLocally = (file, gcsPath, req = null) => {
     return new Promise((resolve, reject) => {
         // Convert GCS path to local path
         const localPath = path.join(uploadsDir, gcsPath);
@@ -34,8 +34,18 @@ const saveFileLocally = (file, gcsPath) => {
             if (err) {
                 reject(err);
             } else {
-                // Return URL relative to backend server
-                const url = `/uploads/${gcsPath}`;
+                // Return absolute URL pointing to backend server
+                let backendUrl;
+                if (req) {
+                    // Use request protocol and host
+                    const protocol = req.protocol || 'http';
+                    const host = req.get('host') || `localhost:${process.env.PORT || 5001}`;
+                    backendUrl = `${protocol}://${host}`;
+                } else {
+                    // Fallback to environment variable or default
+                    backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5001}`;
+                }
+                const url = `${backendUrl}/uploads/${gcsPath}`;
                 resolve(url);
             }
         });
@@ -72,6 +82,15 @@ router.post('/image', upload.single('file'), async (req, res) => {
 
         const { bookId, type, pageNumber } = req.query;
 
+        console.log('Upload request:', { 
+            bookId, 
+            type, 
+            pageNumber, 
+            filename: req.file.originalname,
+            hasBucket: !!bucket,
+            bucketName: process.env.GCS_BUCKET_NAME
+        });
+
         let filePath;
 
         // Check if using organized structure
@@ -83,13 +102,16 @@ router.post('/image', upload.single('file'), async (req, res) => {
 
             // Generate organized file path
             filePath = generateFilePath(bookId, type, req.file.originalname, pageNumber);
+            console.log('Using organized structure:', filePath);
         } else {
             // Fallback to simple structure for backward compatibility
             filePath = `images/${Date.now()}_${req.file.originalname}`;
+            console.log('Using fallback structure (no bookId/type):', filePath);
         }
 
         // Check if GCS is configured
         if (bucket && process.env.GCS_BUCKET_NAME) {
+            console.log('Uploading to GCS:', filePath);
             // Use Google Cloud Storage
             const blob = bucket.file(filePath);
             const blobStream = blob.createWriteStream({
@@ -101,7 +123,7 @@ router.post('/image', upload.single('file'), async (req, res) => {
             blobStream.on('error', (error) => {
                 console.error('GCS Upload error:', error);
                 // Fallback to local storage on GCS error
-                saveFileLocally(req.file, filePath)
+                saveFileLocally(req.file, filePath, req)
                     .then(url => res.status(200).json({ url, path: filePath }))
                     .catch(err => res.status(500).json({ message: 'Upload failed', error: err.message }));
             });
@@ -114,8 +136,8 @@ router.post('/image', upload.single('file'), async (req, res) => {
             blobStream.end(req.file.buffer);
         } else {
             // Use local storage
-            console.log('GCS not configured, using local storage');
-            const url = await saveFileLocally(req.file, filePath);
+            console.log('GCS not configured, using local storage. Bucket:', !!bucket, 'BucketName:', process.env.GCS_BUCKET_NAME);
+            const url = await saveFileLocally(req.file, filePath, req);
             res.status(200).json({ url, path: filePath });
         }
     } catch (error) {
@@ -164,7 +186,7 @@ router.post('/video', upload.single('file'), async (req, res) => {
             blobStream.on('error', (error) => {
                 console.error('GCS Upload error:', error);
                 // Fallback to local storage on GCS error
-                saveFileLocally(req.file, filePath)
+                saveFileLocally(req.file, filePath, req)
                     .then(url => res.status(200).json({ url, path: filePath }))
                     .catch(err => res.status(500).json({ message: 'Upload failed', error: err.message }));
             });
@@ -177,8 +199,8 @@ router.post('/video', upload.single('file'), async (req, res) => {
             blobStream.end(req.file.buffer);
         } else {
             // Use local storage
-            console.log('GCS not configured, using local storage');
-            const url = await saveFileLocally(req.file, filePath);
+            console.log('GCS not configured, using local storage. Bucket:', !!bucket, 'BucketName:', process.env.GCS_BUCKET_NAME);
+            const url = await saveFileLocally(req.file, filePath, req);
             res.status(200).json({ url, path: filePath });
         }
     } catch (error) {

@@ -1,38 +1,98 @@
 const mongoose = require('mongoose');
+
+// Page schema - organized as subfolder under each book
 const pageSchema = new mongoose.Schema({
     bookId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Book',
         required: true,
+        index: true, // Index for efficient queries by book
     },
     pageNumber: {
         type: Number,
         required: true,
     },
+    
+    // Page content - organized structure
     content: {
-        type: String, // Text content
+        // Text content on the page
+        text: {
+            type: String,
+        },
+        
+        // Text boxes with styling
+        textBoxes: [{
+            text: String,
+            x: Number, // percentage (0-100)
+            y: Number, // percentage (0-100)
+            width: { type: Number, default: 30 }, // percentage (0-100)
+            alignment: { type: String, enum: ['left', 'center', 'right'], default: 'left' },
+            fontFamily: { type: String, default: 'Comic Sans MS' },
+            fontSize: { type: Number, default: 24 },
+            color: { type: String, default: '#4a3b2a' },
+        }],
     },
-    // New fields for page editor
-    backgroundUrl: { type: String }, // URL to GCS image or video
+    
+    // Page files - organized per page
+    files: {
+        // Background (image or video)
+        background: {
+            url: { type: String }, // URL to GCS: books/{bookId}/pages/page-{pageNumber}.{ext}
+            type: { type: String, enum: ['image', 'video'] },
+        },
+        
+        // Scroll overlay image
+        scroll: {
+            url: { type: String }, // URL to GCS: books/{bookId}/scroll/filename
+            height: { type: Number }, // Height in px for scroll overlay
+        },
+        
+        // Page-specific images
+        images: [{
+            url: { type: String }, // URL to GCS: books/{bookId}/pages/images/filename
+            filename: { type: String },
+            uploadedAt: { type: Date, default: Date.now },
+        }],
+        
+        // Page-specific videos
+        videos: [{
+            url: { type: String }, // URL to GCS: books/{bookId}/pages/videos/filename
+            filename: { type: String },
+            uploadedAt: { type: Date, default: Date.now },
+        }],
+        
+        // Audio narration for this page
+        audio: {
+            url: { type: String }, // URL to GCS: books/{bookId}/audio/page-{pageNumber}.mp3
+            filename: { type: String },
+            uploadedAt: { type: Date, default: Date.now },
+        },
+    },
+    
+    // Legacy fields (for backward compatibility)
+    imageUrl: { type: String },
+    audioUrl: { type: String },
+    backgroundUrl: { type: String },
     backgroundType: { type: String, enum: ['image', 'video'] },
-    scrollUrl: { type: String }, // URL to scroll overlay image
-    scrollHeight: { type: Number }, // Height in px for scroll overlay
-    textBoxes: [{
-        text: String,
-        x: Number, // percentage (0-100)
-        y: Number, // percentage (0-100)
-        width: { type: Number, default: 30 }, // percentage (0-100)
-        alignment: { type: String, enum: ['left', 'center', 'right'], default: 'left' },
-        fontFamily: { type: String, default: 'Comic Sans MS' },
-        fontSize: { type: Number, default: 24 },
-        color: { type: String, default: '#4a3b2a' },
-    }],
-    imageUrl: { type: String }, // legacy field (keep for backward compatibility)
-    audioUrl: { type: String }, // URL to GCS (narration)
+    scrollUrl: { type: String },
+    scrollHeight: { type: Number },
+    
     createdAt: {
         type: Date,
         default: Date.now,
     },
+    updatedAt: {
+        type: Date,
+        default: Date.now,
+    },
+});
+
+// Update updatedAt on save
+pageSchema.pre('save', function(next) {
+    this.updatedAt = Date.now();
+    if (typeof next === 'function') {
+        next();
+    }
 });
 
 // Compound index to ensure unique page numbers per book
