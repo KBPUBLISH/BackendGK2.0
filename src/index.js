@@ -13,6 +13,10 @@ app.use(express.json());
 // Database Connection
 connectDB();
 
+// Serve uploaded files statically
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Routes
 app.use('/api/books', require('./routes/books'));
 app.use('/api/pages', require('./routes/pages'));
