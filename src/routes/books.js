@@ -168,6 +168,26 @@ router.put('/:id', async (req, res) => {
             delete req.body.coverImage; // Remove from body to avoid duplicate
         }
 
+        // Handle files object - ensure proper structure
+        if (req.body.files) {
+            if (!book.files) {
+                book.files = { coverImage: null, images: [], videos: [], audio: [] };
+            }
+            if (req.body.files.coverImage !== undefined) {
+                book.files.coverImage = req.body.files.coverImage;
+            }
+            if (req.body.files.images !== undefined) {
+                book.files.images = req.body.files.images;
+            }
+            if (req.body.files.videos !== undefined) {
+                book.files.videos = req.body.files.videos;
+            }
+            if (req.body.files.audio !== undefined) {
+                book.files.audio = req.body.files.audio;
+            }
+            delete req.body.files; // Remove from body to avoid duplicate assignment
+        }
+
         // Update all other fields
         Object.assign(book, req.body);
         const updatedBook = await book.save();

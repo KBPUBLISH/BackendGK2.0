@@ -67,6 +67,13 @@ const pageSchema = new mongoose.Schema({
             filename: { type: String },
             uploadedAt: { type: Date, default: Date.now },
         },
+        
+        // Sound effect for this page (1-3 seconds, plays on bubble tap)
+        soundEffect: {
+            url: { type: String }, // URL to GCS: books/{bookId}/sound-effects/page-{pageNumber}.mp3
+            filename: { type: String },
+            uploadedAt: { type: Date, default: Date.now },
+        },
     },
     
     // Legacy fields (for backward compatibility)

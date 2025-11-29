@@ -174,6 +174,14 @@ router.put('/:id', async (req, res) => {
             page.textBoxes = req.body.content.textBoxes; // Legacy
         }
 
+        // Handle files.soundEffect if provided
+        if (req.body.files && req.body.files.soundEffect !== undefined) {
+            if (!page.files) {
+                page.files = { images: [], videos: [], audio: {} };
+            }
+            page.files.soundEffect = req.body.files.soundEffect;
+        }
+
         // Update all other fields (but don't overwrite what we just set)
         const { textBoxes, content, ...otherFields } = req.body;
         Object.assign(page, otherFields);
