@@ -15,8 +15,8 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // Helper to save buffer to file (Local or GCS)
-const saveAudioFile = async (buffer, filename) => {
-    const filePath = `audio/${filename}`;
+const saveAudioFile = async (buffer, filename, bookId = null) => {
+    const filePath = bookId ? `books/${bookId}/audio/${filename}` : `audio/${filename}`;
 
     // Check if GCS is configured
     if (bucket && process.env.GCS_BUCKET_NAME) {
@@ -65,7 +65,7 @@ const saveLocal = (buffer, gcsPath) => {
 // POST /generate - Generate TTS audio
 router.post('/generate', async (req, res) => {
     try {
-        const { text, voiceId } = req.body;
+        const { text, voiceId, bookId } = req.body;
 
         if (!text || !voiceId) {
             return res.status(400).json({ message: 'Text and voiceId are required' });
@@ -121,7 +121,7 @@ router.post('/generate', async (req, res) => {
 
         // 3. Save Audio
         const filename = `${Date.now()}_${textHash}.mp3`;
-        const audioUrl = await saveAudioFile(response.data, filename);
+        const audioUrl = await saveAudioFile(response.data, filename, bookId);
 
         // 4. Generate word-level alignment data
         // Since ElevenLabs doesn't return timestamps in the standard API response,

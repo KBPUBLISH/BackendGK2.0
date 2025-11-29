@@ -30,7 +30,7 @@ const categorySchema = new mongoose.Schema({
 categorySchema.pre('save', function(next) {
     this.updatedAt = Date.now();
     if (typeof next === 'function') {
-        next();
+    next();
     }
 });
 
