@@ -74,6 +74,11 @@ const generateFilePath = (bookId, type, filename, pageNumber = null) => {
         return `games/${type}/${finalFilename}`;
     }
 
+    // Special handling for playlists folder
+    if (bookId === 'playlists') {
+        return `playlists/${type}/${finalFilename}`;
+    }
+
     return `books/${bookId}/${type}/${finalFilename}`;
 };
 
@@ -106,8 +111,13 @@ router.post('/image', upload.single('file'), async (req, res) => {
                 return res.status(400).json({ message: 'type must be one of: cover, pages, scroll, audio, game-cover' });
             }
 
-            // Generate organized file path
-            filePath = generateFilePath(bookId, type, req.file.originalname, pageNumber);
+            // Special handling for playlists
+            if (bookId === 'playlists') {
+                filePath = `playlists/${type}/${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            } else {
+                // Generate organized file path for books
+                filePath = generateFilePath(bookId, type, req.file.originalname, pageNumber);
+            }
             console.log('Using organized structure:', filePath);
         } else {
             // Fallback to simple structure for backward compatibility
@@ -223,11 +233,7 @@ router.post('/audio', upload.single('file'), async (req, res) => {
             return res.status(400).json({ message: 'No file uploaded' });
         }
 
-        const { bookId } = req.query;
-
-        if (!bookId) {
-            return res.status(400).json({ message: 'bookId is required for audio uploads' });
-        }
+        const { bookId, type } = req.query;
 
         // Validate audio file type (more lenient - check extension if mimetype fails)
         const isAudioMimeType = req.file.mimetype.startsWith('audio/');
@@ -241,8 +247,24 @@ router.post('/audio', upload.single('file'), async (req, res) => {
             });
         }
 
-        // Generate organized file path: books/{bookId}/audio/filename
-        const filePath = generateFilePath(bookId, 'audio', req.file.originalname);
+        let filePath;
+        
+        // Check if using organized structure
+        if (bookId && type) {
+            // Special handling for playlists
+            if (bookId === 'playlists') {
+                filePath = `playlists/audio/${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            } else {
+                // Generate organized file path for books
+                filePath = generateFilePath(bookId, 'audio', req.file.originalname);
+            }
+        } else if (bookId) {
+            // Fallback: if only bookId provided, use it
+            filePath = generateFilePath(bookId, 'audio', req.file.originalname);
+        } else {
+            // Fallback to simple structure
+            filePath = `audio/${Date.now()}_${req.file.originalname}`;
+        }
 
         console.log('Uploading audio to:', filePath);
 

@@ -2,10 +2,12 @@ const express = require('express');
 const router = express.Router();
 const Category = require('../models/Category');
 
-// Get all categories
+// Get all categories (optionally filtered by type)
 router.get('/', async (req, res) => {
     try {
-        const categories = await Category.find().sort({ name: 1 });
+        const { type } = req.query;
+        const query = type ? { type } : {};
+        const categories = await Category.find(query).sort({ name: 1 });
         res.json(categories);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -35,20 +37,25 @@ router.post('/', async (req, res) => {
             return res.status(503).json({ error: 'Database not connected' });
         }
         
-        const { name, description, color, icon } = req.body;
+        const { name, type, description, color, icon } = req.body;
         
         if (!name || !name.trim()) {
             return res.status(400).json({ error: 'Category name is required' });
         }
         
-        // Check if category already exists
-        const existing = await Category.findOne({ name: name.trim() });
+        if (!type || !['book', 'audio'].includes(type)) {
+            return res.status(400).json({ error: 'Category type must be either "book" or "audio"' });
+        }
+        
+        // Check if category already exists for this type
+        const existing = await Category.findOne({ name: name.trim(), type });
         if (existing) {
-            return res.status(400).json({ error: 'Category already exists' });
+            return res.status(400).json({ error: `Category "${name.trim()}" already exists for ${type} categories` });
         }
 
         const category = new Category({
             name: name.trim(),
+            type: type,
             description: description || '',
             color: color || '#6366f1',
             icon: icon || '',
@@ -69,22 +76,31 @@ router.post('/', async (req, res) => {
 // Update category
 router.put('/:id', async (req, res) => {
     try {
-        const { name, description, color, icon } = req.body;
+        const { name, type, description, color, icon } = req.body;
         
         const category = await Category.findById(req.params.id);
         if (!category) {
             return res.status(404).json({ error: 'Category not found' });
         }
 
-        // Check if new name conflicts with existing category
-        if (name && name.trim() !== category.name) {
-            const existing = await Category.findOne({ name: name.trim() });
+        // Validate type if provided
+        if (type && !['book', 'audio'].includes(type)) {
+            return res.status(400).json({ error: 'Category type must be either "book" or "audio"' });
+        }
+
+        // Check if new name/type combination conflicts with existing category
+        const newName = name ? name.trim() : category.name;
+        const newType = type || category.type;
+        
+        if ((name && name.trim() !== category.name) || (type && type !== category.type)) {
+            const existing = await Category.findOne({ name: newName, type: newType, _id: { $ne: category._id } });
             if (existing) {
-                return res.status(400).json({ error: 'Category name already exists' });
+                return res.status(400).json({ error: `Category "${newName}" already exists for ${newType} categories` });
             }
         }
 
-        category.name = name ? name.trim() : category.name;
+        category.name = newName;
+        category.type = newType;
         category.description = description !== undefined ? description : category.description;
         category.color = color || category.color;
         category.icon = icon !== undefined ? icon : category.icon;

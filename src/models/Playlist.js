@@ -11,6 +11,7 @@ const audioItemSchema = new mongoose.Schema({
     },
     coverImage: {
         type: String, // URL to GCS
+        required: false, // Made optional for backward compatibility with existing playlists
     },
     audioUrl: {
         type: String, // URL to GCS
@@ -39,11 +40,12 @@ const playlistSchema = new mongoose.Schema({
     },
     coverImage: {
         type: String, // URL to GCS
+        required: false, // Made optional for backward compatibility with existing playlists
     },
     category: {
         type: String,
-        enum: ['Music', 'Stories', 'Devotionals', 'Other'],
         default: 'Music',
+        // No enum restriction - allows any category name from the Categories collection
     },
     type: {
         type: String,
@@ -74,7 +76,9 @@ const playlistSchema = new mongoose.Schema({
 // Update updatedAt on save
 playlistSchema.pre('save', function (next) {
     this.updatedAt = Date.now();
-    next();
+    if (typeof next === 'function') {
+        next();
+    }
 });
 
 module.exports = mongoose.model('Playlist', playlistSchema);

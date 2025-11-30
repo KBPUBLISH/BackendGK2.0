@@ -4,8 +4,13 @@ const categorySchema = new mongoose.Schema({
     name: {
         type: String,
         required: true,
-        unique: true,
         trim: true,
+    },
+    type: {
+        type: String,
+        enum: ['book', 'audio'],
+        required: true,
+        default: 'book',
     },
     description: {
         type: String,
@@ -26,6 +31,9 @@ const categorySchema = new mongoose.Schema({
         default: Date.now,
     },
 });
+
+// Compound unique index: name must be unique per type
+categorySchema.index({ name: 1, type: 1 }, { unique: true });
 
 categorySchema.pre('save', function(next) {
     this.updatedAt = Date.now();

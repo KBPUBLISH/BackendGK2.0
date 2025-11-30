@@ -2,10 +2,12 @@ const express = require('express');
 const router = express.Router();
 const Playlist = require('../models/Playlist');
 
-// GET all playlists
+// GET all playlists (optionally filtered by status)
 router.get('/', async (req, res) => {
     try {
-        const playlists = await Playlist.find().sort({ createdAt: -1 });
+        const { status } = req.query;
+        const query = status ? { status } : {};
+        const playlists = await Playlist.find(query).sort({ createdAt: -1 });
         res.json(playlists);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -25,36 +27,118 @@ router.get('/:id', async (req, res) => {
 
 // POST create playlist
 router.post('/', async (req, res) => {
-    const playlist = new Playlist({
-        title: req.body.title,
-        author: req.body.author,
-        description: req.body.description,
-        coverImage: req.body.coverImage,
-        category: req.body.category,
-        type: req.body.type,
-        items: req.body.items || [],
-        status: req.body.status,
-    });
-
     try {
+        console.log('📝 POST /api/playlists - Request body:', JSON.stringify(req.body, null, 2));
+        
+        // Validate required fields
+        if (!req.body.title) {
+            return res.status(400).json({ message: 'Title is required' });
+        }
+        if (!req.body.type) {
+            return res.status(400).json({ message: 'Type is required (Song or Audiobook)' });
+        }
+        
+        // Process items to ensure coverImage is optional
+        const processedItems = (req.body.items || []).map((item, index) => ({
+            title: item.title || '',
+            author: item.author || 'Kingdom Builders Publishing',
+            audioUrl: item.audioUrl || '',
+            order: item.order !== undefined ? item.order : index,
+            duration: item.duration,
+            coverImage: (item.coverImage && item.coverImage.trim() !== '') ? item.coverImage : null, // Convert empty strings to null
+        }));
+        
+        console.log('📝 Processed items:', JSON.stringify(processedItems, null, 2));
+        
+        const playlist = new Playlist({
+            title: req.body.title,
+            author: req.body.author || 'Kingdom Builders Publishing',
+            description: req.body.description || '',
+            coverImage: (req.body.coverImage && req.body.coverImage.trim() !== '') ? req.body.coverImage : null, // Convert empty strings to null
+            category: req.body.category || 'Music',
+            type: req.body.type,
+            items: processedItems,
+            status: req.body.status || 'draft',
+        });
+
+        console.log('📝 About to save new playlist...');
         const newPlaylist = await playlist.save();
+        console.log('✅ Playlist created successfully:', newPlaylist._id);
         res.status(201).json(newPlaylist);
     } catch (error) {
-        res.status(400).json({ message: error.message });
+        console.error('❌ Playlist creation error:', error);
+        console.error('❌ Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
+        if (error.errors) {
+            console.error('❌ Validation errors:', JSON.stringify(error.errors, null, 2));
+        }
+        res.status(400).json({ 
+            message: error.message,
+            error: error.name,
+            details: error.errors || undefined
+        });
     }
 });
 
 // PUT update playlist
 router.put('/:id', async (req, res) => {
     try {
+        console.log('📝 PUT /api/playlists/:id - Request body:', JSON.stringify(req.body, null, 2));
         const playlist = await Playlist.findById(req.params.id);
         if (!playlist) return res.status(404).json({ message: 'Playlist not found' });
 
-        Object.assign(playlist, req.body);
+        // Update fields
+        if (req.body.title !== undefined) playlist.title = req.body.title;
+        if (req.body.author !== undefined) playlist.author = req.body.author;
+        if (req.body.description !== undefined) playlist.description = req.body.description;
+        if (req.body.coverImage !== undefined) playlist.coverImage = req.body.coverImage;
+        if (req.body.category !== undefined) playlist.category = req.body.category;
+        if (req.body.type !== undefined) playlist.type = req.body.type;
+        if (req.body.status !== undefined) playlist.status = req.body.status;
+        if (req.body.items !== undefined) {
+            // For items, ensure all required fields are present
+            playlist.items = req.body.items.map((item, index) => {
+                const mappedItem = {
+                    title: item.title || '',
+                    author: item.author || 'Kingdom Builders Publishing',
+                    audioUrl: item.audioUrl || '',
+                    order: item.order !== undefined ? item.order : index,
+                    duration: item.duration,
+                    coverImage: (item.coverImage && item.coverImage.trim() !== '') ? item.coverImage : null, // Convert empty strings to null
+                };
+                console.log(`📝 Item ${index}:`, JSON.stringify(mappedItem, null, 2));
+                return mappedItem;
+            });
+            console.log('📝 Mapped items:', JSON.stringify(playlist.items, null, 2));
+        }
+        
+        // Also handle playlist coverImage
+        if (req.body.coverImage !== undefined) {
+            playlist.coverImage = (req.body.coverImage && req.body.coverImage.trim() !== '') ? req.body.coverImage : null;
+        }
+
+        console.log('📝 About to save playlist...');
         const updatedPlaylist = await playlist.save();
+        console.log('✅ Playlist saved successfully');
         res.json(updatedPlaylist);
     } catch (error) {
-        res.status(400).json({ message: error.message });
+        console.error('❌ Playlist update error:', error);
+        console.error('❌ Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
+        if (error.errors) {
+            console.error('❌ Validation errors:', JSON.stringify(error.errors, null, 2));
+        }
+        res.status(400).json({ 
+            message: error.message,
+            error: error.name,
+            details: error.errors || undefined
+        });
     }
 });
 
