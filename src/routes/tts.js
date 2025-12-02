@@ -170,6 +170,111 @@ router.post('/generate', async (req, res) => {
     }
 });
 
+// POST /enhance - Add ElevenLabs emotion prompts to text
+router.post('/enhance', async (req, res) => {
+    try {
+        const { text } = req.body;
+
+        if (!text || text.trim().length === 0) {
+            return res.status(400).json({ message: 'Text is required' });
+        }
+
+        // ElevenLabs v3 supported emotion/style tags
+        // Reference: https://elevenlabs.io/docs/speech-synthesis/prompting
+        const emotionTags = [
+            '[laughs]', '[chuckles]', '[giggles]', '[sighs]', '[gasps]',
+            '[whispers]', '[shouts]', '[yells]', '[cries]', '[sobs]',
+            '[sniffles]', '[clears throat]', '[coughs]', '[groans]',
+            '[excitedly]', '[sadly]', '[angrily]', '[happily]', '[nervously]',
+            '[mysteriously]', '[dramatically]', '[softly]', '[loudly]',
+            '[slowly]', '[quickly]', '[pause]', '[long pause]'
+        ];
+
+        // Use OpenAI to intelligently add emotion prompts
+        const openaiKey = process.env.OPENAI_API_KEY;
+        
+        if (openaiKey) {
+            try {
+                const response = await axios.post(
+                    'https://api.openai.com/v1/chat/completions',
+                    {
+                        model: 'gpt-4o-mini',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: `You are a children's book narrator assistant. Your job is to enhance story text with emotion prompts that ElevenLabs text-to-speech can interpret.
+
+Available emotion tags you can insert:
+${emotionTags.join(', ')}
+
+Rules:
+1. Insert emotion tags naturally where they fit the story's mood
+2. Don't overuse tags - typically 1-3 per paragraph is enough
+3. Place tags BEFORE the text they should affect, or inline for sound effects
+4. Keep the original text intact, only add tags
+5. For dialogue, add emotions that match the character's feelings
+6. Add [pause] or [long pause] for dramatic moments
+7. Use [whispers] for secrets, [excitedly] for exciting parts, [sadly] for sad moments
+8. Sound effects like [laughs], [gasps], [sighs] should be placed where a character would make that sound
+
+Return ONLY the enhanced text with emotion tags inserted. No explanations.`
+                            },
+                            {
+                                role: 'user',
+                                content: `Enhance this children's story text with appropriate emotion prompts:\n\n${text}`
+                            }
+                        ],
+                        temperature: 0.7,
+                        max_tokens: 2000
+                    },
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${openaiKey}`,
+                            'Content-Type': 'application/json'
+                        }
+                    }
+                );
+
+                const enhancedText = response.data.choices[0].message.content.trim();
+                return res.json({ enhancedText, method: 'ai' });
+            } catch (aiError) {
+                console.error('OpenAI enhancement failed, falling back to rule-based:', aiError.message);
+            }
+        }
+
+        // Fallback: Simple rule-based enhancement
+        let enhancedText = text;
+
+        // Add pauses after periods for dramatic effect
+        enhancedText = enhancedText.replace(/\.\s+/g, '. [pause] ');
+        
+        // Add excitement for exclamation marks
+        enhancedText = enhancedText.replace(/!\s*/g, '! ');
+        
+        // Add mystery for questions
+        enhancedText = enhancedText.replace(/\?\s*/g, '? ');
+
+        // Common story phrases
+        enhancedText = enhancedText.replace(/\b(whispered)\b/gi, '[whispers] whispered');
+        enhancedText = enhancedText.replace(/\b(shouted|yelled|screamed)\b/gi, '[shouts] $1');
+        enhancedText = enhancedText.replace(/\b(laughed|giggled|chuckled)\b/gi, '[laughs] $1');
+        enhancedText = enhancedText.replace(/\b(cried|sobbed)\b/gi, '[sadly] $1');
+        enhancedText = enhancedText.replace(/\b(gasped)\b/gi, '[gasps] gasped');
+        enhancedText = enhancedText.replace(/\b(sighed)\b/gi, '[sighs] sighed');
+        enhancedText = enhancedText.replace(/\b(exclaimed)\b/gi, '[excitedly] exclaimed');
+        
+        // Dramatic moments
+        enhancedText = enhancedText.replace(/\b(suddenly|all of a sudden)\b/gi, '[pause] $1');
+        enhancedText = enhancedText.replace(/\b(the end)\b/gi, '[long pause] The End');
+
+        res.json({ enhancedText, method: 'rules' });
+
+    } catch (error) {
+        console.error('Text Enhancement Error:', error.message);
+        res.status(500).json({ message: 'Failed to enhance text', error: error.message });
+    }
+});
+
 // GET /voices - Get available voices
 router.get('/voices', async (req, res) => {
     try {
