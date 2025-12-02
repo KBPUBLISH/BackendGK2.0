@@ -22,6 +22,16 @@ const upload = multer({
   }
 });
 
+// Health check for music routes
+router.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    route: 'music',
+    bucketConfigured: !!bucket,
+    bucketName: bucket ? bucket.name : 'not configured'
+  });
+});
+
 // Get all music entries
 router.get('/', async (req, res) => {
   try {
@@ -78,20 +88,34 @@ router.get('/active', async (req, res) => {
 // Create or update music entry with file upload
 router.post('/upload', upload.single('audio'), async (req, res) => {
   try {
+    console.log('📤 Music upload request received');
+    console.log('Body:', req.body);
+    console.log('File:', req.file ? { name: req.file.originalname, size: req.file.size, mimetype: req.file.mimetype } : 'No file');
+    
     const { target, name, description, defaultVolume, loop } = req.body;
     
     if (!target || !name) {
+      console.log('❌ Missing target or name');
       return res.status(400).json({ error: 'Target and name are required' });
     }
     
     if (!req.file) {
+      console.log('❌ No audio file provided');
       return res.status(400).json({ error: 'Audio file is required' });
+    }
+    
+    // Check if bucket is configured
+    if (!bucket) {
+      console.error('❌ GCS bucket not configured');
+      return res.status(500).json({ error: 'Storage not configured. Please check GCS credentials.' });
     }
     
     // Generate unique filename
     const timestamp = Date.now();
     const ext = path.extname(req.file.originalname) || '.mp3';
     const filename = `music/${target}-${timestamp}${ext}`;
+    
+    console.log(`📁 Uploading to GCS: ${filename}`);
     
     // Upload to GCS
     const blob = bucket.file(filename);
@@ -104,37 +128,46 @@ router.post('/upload', upload.single('audio'), async (req, res) => {
     });
     
     blobStream.on('error', (error) => {
-      console.error('Upload error:', error);
-      res.status(500).json({ error: 'Failed to upload file' });
+      console.error('❌ GCS Upload error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to upload file to storage', details: error.message });
+      }
     });
     
     blobStream.on('finish', async () => {
-      // Make the file publicly accessible
-      await blob.makePublic();
-      
-      const audioUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
-      
-      // Create or update the music entry
-      const musicData = {
-        target,
-        name,
-        description: description || '',
-        audioUrl,
-        originalFilename: req.file.originalname,
-        fileSize: req.file.size,
-        defaultVolume: parseFloat(defaultVolume) || 0.5,
-        loop: loop === 'true' || loop === true,
-        isActive: true
-      };
-      
-      const music = await Music.findOneAndUpdate(
-        { target },
-        musicData,
-        { upsert: true, new: true }
-      );
-      
-      console.log(`✅ Music uploaded for target "${target}": ${audioUrl}`);
-      res.json(music);
+      try {
+        // Make the file publicly accessible
+        await blob.makePublic();
+        
+        const audioUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+        
+        // Create or update the music entry
+        const musicData = {
+          target,
+          name,
+          description: description || '',
+          audioUrl,
+          originalFilename: req.file.originalname,
+          fileSize: req.file.size,
+          defaultVolume: parseFloat(defaultVolume) || 0.5,
+          loop: loop === 'true' || loop === true,
+          isActive: true
+        };
+        
+        const music = await Music.findOneAndUpdate(
+          { target },
+          musicData,
+          { upsert: true, new: true }
+        );
+        
+        console.log(`✅ Music uploaded for target "${target}": ${audioUrl}`);
+        res.json(music);
+      } catch (dbError) {
+        console.error('❌ Database error:', dbError);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to save music data', details: dbError.message });
+        }
+      }
     });
     
     blobStream.end(req.file.buffer);
