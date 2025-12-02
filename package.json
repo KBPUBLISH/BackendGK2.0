@@ -25,6 +25,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.0.0",
     "multer": "^2.0.2",
+    "onesignal-node": "^3.4.0",
     "ws": "^8.18.3"
   },
   "devDependencies": {

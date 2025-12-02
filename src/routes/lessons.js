@@ -3,6 +3,7 @@ const router = express.Router();
 const Lesson = require('../models/Lesson');
 const LessonCompletion = require('../models/LessonCompletion');
 const { generateActivityFromDevotional } = require('../services/aiService');
+const { notifyNewLesson } = require('../services/notificationService');
 
 // GET /api/lessons - Get all lessons (with optional filtering)
 // Query params: status, scheduledDate, published
@@ -99,6 +100,11 @@ router.post('/', async (req, res) => {
         const lesson = new Lesson(lessonData);
         const newLesson = await lesson.save();
         
+        // Send notification if lesson is published
+        if (newLesson.status === 'published') {
+            notifyNewLesson(newLesson).catch(err => console.error('Notification error:', err));
+        }
+        
         res.status(201).json(newLesson);
     } catch (error) {
         console.error('Error creating lesson:', error);
@@ -127,12 +133,20 @@ router.put('/:id', async (req, res) => {
         if (req.body.coinReward !== undefined) lesson.coinReward = req.body.coinReward;
         if (req.body.order !== undefined) lesson.order = req.body.order;
         
+        // Track if status is changing to published
+        const wasPublished = lesson.status === 'published';
+        
         // Set publishedDate when status changes to published
-        if (req.body.status === 'published' && lesson.status !== 'published') {
+        if (req.body.status === 'published' && !wasPublished) {
             lesson.publishedDate = new Date();
         }
         
         const updatedLesson = await lesson.save();
+        
+        // Send notification if lesson was just published
+        if (!wasPublished && updatedLesson.status === 'published') {
+            notifyNewLesson(updatedLesson).catch(err => console.error('Notification error:', err));
+        }
         
         res.json(updatedLesson);
     } catch (error) {

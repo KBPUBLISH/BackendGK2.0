@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Book = require('../models/Book');
 const mongoose = require('mongoose');
+const { notifyNewBook } = require('../services/notificationService');
 
 // GET all books
 router.get('/', async (req, res) => {
@@ -134,6 +135,11 @@ router.post('/', async (req, res) => {
         const newBook = await book.save();
         console.log('Book created successfully:', newBook._id);
         
+        // Send notification if book is published
+        if (newBook.status === 'published') {
+            notifyNewBook(newBook).catch(err => console.error('Notification error:', err));
+        }
+        
         // Map coverImage for backward compatibility in response
         const bookObj = newBook.toObject();
         if (bookObj.files && bookObj.files.coverImage) {
@@ -223,9 +229,17 @@ router.put('/:id', async (req, res) => {
         // Update all other fields
         Object.assign(book, req.body);
         
+        // Check if status is changing to published
+        const wasPublished = book.status === 'published';
+        
         console.log('Book before save - files.coverImage:', book.files?.coverImage);
         const updatedBook = await book.save();
         console.log('Book after save - files.coverImage:', updatedBook.files?.coverImage);
+        
+        // Send notification if book was just published (status changed to published)
+        if (!wasPublished && updatedBook.status === 'published') {
+            notifyNewBook(updatedBook).catch(err => console.error('Notification error:', err));
+        }
         
         // Map coverImage for backward compatibility in response
         const bookObj = updatedBook.toObject();

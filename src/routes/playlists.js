@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Playlist = require('../models/Playlist');
+const { notifyNewPlaylist, notifyNewPlaylistItem } = require('../services/notificationService');
 
 // GET all playlists (optionally filtered by status)
 router.get('/', async (req, res) => {
@@ -67,6 +68,12 @@ router.post('/', async (req, res) => {
         console.log('📝 About to save new playlist...');
         const newPlaylist = await playlist.save();
         console.log('✅ Playlist created successfully:', newPlaylist._id);
+        
+        // Send notification if playlist is published
+        if (newPlaylist.status === 'published') {
+            notifyNewPlaylist(newPlaylist).catch(err => console.error('Notification error:', err));
+        }
+        
         res.status(201).json(newPlaylist);
     } catch (error) {
         console.error('❌ Playlist creation error:', error);
@@ -128,9 +135,32 @@ router.put('/:id', async (req, res) => {
             playlist.coverImage = (req.body.coverImage && req.body.coverImage.trim() !== '') ? req.body.coverImage : null;
         }
 
+        // Track if status is changing to published and if new items were added
+        const wasPublished = playlist.status === 'published';
+        const previousItemCount = playlist.items?.length || 0;
+        
         console.log('📝 About to save playlist...');
         const updatedPlaylist = await playlist.save();
         console.log('✅ Playlist saved successfully');
+        
+        // Send notification if playlist was just published
+        if (!wasPublished && updatedPlaylist.status === 'published') {
+            notifyNewPlaylist(updatedPlaylist).catch(err => console.error('Notification error:', err));
+        }
+        // If already published and new items were added, notify about new items
+        else if (wasPublished && updatedPlaylist.status === 'published') {
+            const newItemCount = updatedPlaylist.items?.length || 0;
+            if (newItemCount > previousItemCount) {
+                // Get the newest item(s)
+                const newItems = updatedPlaylist.items.slice(previousItemCount);
+                for (const newItem of newItems) {
+                    notifyNewPlaylistItem(updatedPlaylist, newItem).catch(err => 
+                        console.error('Notification error:', err)
+                    );
+                }
+            }
+        }
+        
         res.json(updatedPlaylist);
     } catch (error) {
         console.error('❌ Playlist update error:', error);
