@@ -525,20 +525,16 @@ router.post('/mp3', upload.single('audio'), async (req, res) => {
             });
 
             blobStream.on('finish', async () => {
-                try {
-                    await blob.makePublic();
-                    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
-                    console.log('✅ MP3 uploaded:', publicUrl);
-                    res.status(200).json({ 
-                        url: publicUrl, 
-                        filename: req.file.originalname,
-                        size: req.file.size,
-                        message: 'Copy this URL and use it in the app!'
-                    });
-                } catch (err) {
-                    console.error('❌ Error making file public:', err);
-                    res.status(500).json({ message: 'Upload succeeded but failed to make public', error: err.message });
-                }
+                // Note: With uniform bucket-level access, we don't need to call makePublic()
+                // The bucket is already configured for public access
+                const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+                console.log('✅ MP3 uploaded:', publicUrl);
+                res.status(200).json({ 
+                    url: publicUrl, 
+                    filename: req.file.originalname,
+                    size: req.file.size,
+                    message: 'Copy this URL and use it in the app!'
+                });
             });
 
             blobStream.end(req.file.buffer);

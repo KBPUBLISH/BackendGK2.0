@@ -144,9 +144,8 @@ router.post('/upload', (req, res, next) => {
     
     blobStream.on('finish', async () => {
       try {
-        // Make the file publicly accessible
-        await blob.makePublic();
-        
+        // Note: With uniform bucket-level access, we don't need to call makePublic()
+        // The bucket is already configured for public access
         const audioUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
         
         // Create or update the music entry
