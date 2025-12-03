@@ -5,21 +5,73 @@ const BookQuiz = require('../models/BookQuiz');
 const Book = require('../models/Book');
 const Page = require('../models/Page');
 
+// Helper function to get age-appropriate prompt
+const getAgeAppropriatePrompt = (age, ageGroup) => {
+    switch (ageGroup) {
+        case '3-5':
+            return `You are creating a quiz for a child aged 3-5 years old.
+Rules for this age group:
+- Use VERY simple words (1-2 syllables when possible)
+- Questions should be about basic things: colors, animals, characters, simple actions
+- Options should be short (2-4 words maximum)
+- Make questions fun and encouraging
+- Focus on "what" and "who" questions, not "why" or "how"
+- Include picture-friendly concepts (things kids can visualize)
+- Example: "What color was the bunny?" with options like "White", "Blue", "Green", "Red"`;
+
+        case '6-8':
+            return `You are creating a quiz for a child aged 6-8 years old.
+Rules for this age group:
+- Use simple but slightly more complex vocabulary
+- Questions can include basic comprehension and sequence of events
+- Options can be short sentences (5-8 words)
+- Include some "why" questions with simple reasoning
+- Test memory of story details and character names
+- Example: "Why did the farmer go to the field?" with options about the story`;
+
+        case '9-12':
+            return `You are creating a quiz for a child aged 9-12 years old.
+Rules for this age group:
+- Use grade-appropriate vocabulary
+- Questions should test deeper comprehension and themes
+- Include inference questions (what might happen next, why characters acted a certain way)
+- Options can be full sentences
+- Include questions about lessons learned and moral of the story
+- Test understanding of cause and effect
+- Example: "What lesson did the main character learn about friendship?"`;
+
+        default:
+            return `You are creating a quiz for a child. Use age-appropriate language and concepts.`;
+    }
+};
+
 // POST /api/quiz/generate - Generate a quiz for a book using AI
 router.post('/generate', async (req, res) => {
     try {
-        const { bookId } = req.body;
+        const { bookId, age } = req.body;
 
         if (!bookId) {
             return res.status(400).json({ message: 'bookId is required' });
         }
 
+        // Determine age group
+        const userAge = parseInt(age) || 6; // Default to 6 if not provided
+        const ageGroup = BookQuiz.getAgeGroup(userAge);
+        
+        console.log(`📚 Quiz request for book ${bookId}, age ${userAge} (group: ${ageGroup})`);
+
         // Check if quiz already exists for this book
         let existingQuiz = await BookQuiz.findOne({ bookId });
-        if (existingQuiz && existingQuiz.questions.length > 0) {
-            console.log('📚 Quiz already exists for book:', bookId);
+        
+        // Check if we already have questions for this age group
+        if (existingQuiz && existingQuiz.hasQuestionsForAge(userAge)) {
+            console.log(`📚 Quiz already exists for book ${bookId}, age group ${ageGroup}`);
             return res.json({
-                quiz: existingQuiz,
+                quiz: {
+                    ...existingQuiz.toObject(),
+                    questions: existingQuiz.getQuestionsForAge(userAge),
+                    ageGroup
+                },
                 cached: true
             });
         }
@@ -64,7 +116,7 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ message: 'No story content found in book pages' });
         }
 
-        console.log('📖 Generating quiz for book:', book.title);
+        console.log('📖 Generating quiz for book:', book.title, 'Age group:', ageGroup);
         console.log('📝 Story content length:', storyContent.length, 'characters');
 
         // Use OpenAI to generate quiz questions
@@ -73,6 +125,8 @@ router.post('/generate', async (req, res) => {
             return res.status(500).json({ message: 'OpenAI API key not configured' });
         }
 
+        const agePrompt = getAgeAppropriatePrompt(userAge, ageGroup);
+
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
             {
@@ -80,17 +134,18 @@ router.post('/generate', async (req, res) => {
                 messages: [
                     {
                         role: 'system',
-                        content: `You are a children's book quiz creator. Create engaging, age-appropriate quiz questions based on the story content provided.
+                        content: `${agePrompt}
 
-Rules:
+Create exactly 6 multiple-choice questions based on the story content provided.
+
+General Rules:
 1. Create exactly 6 multiple-choice questions
 2. Each question should have exactly 4 options (A, B, C, D)
 3. Only ONE option should be correct per question
 4. Questions should test comprehension, not trick the child
-5. Use simple, child-friendly language
-6. Questions should cover different parts of the story
-7. Include questions about characters, events, lessons, and feelings
-8. Make the quiz fun and encouraging
+5. Questions should cover different parts of the story
+6. Include questions about characters, events, and feelings
+7. Make the quiz fun and encouraging
 
 Return your response as a valid JSON array with this exact structure:
 [
@@ -109,7 +164,7 @@ Return ONLY the JSON array, no explanations or markdown.`
                     },
                     {
                         role: 'user',
-                        content: `Create a 6-question quiz for this children's story titled "${book.title}":\n\n${storyContent.substring(0, 4000)}`
+                        content: `Create a 6-question quiz for a ${userAge}-year-old child about this story titled "${book.title}":\n\n${storyContent.substring(0, 4000)}`
                     }
                 ],
                 temperature: 0.7,
@@ -141,22 +196,26 @@ Return ONLY the JSON array, no explanations or markdown.`
         }
 
         // Create or update the quiz
-        if (existingQuiz) {
-            existingQuiz.questions = questions;
-            await existingQuiz.save();
-        } else {
+        if (!existingQuiz) {
             existingQuiz = new BookQuiz({
                 bookId,
-                questions,
+                ageGroupedQuestions: [],
                 attempts: []
             });
-            await existingQuiz.save();
         }
+        
+        // Add questions for this age group
+        existingQuiz.setQuestionsForAge(userAge, questions);
+        await existingQuiz.save();
 
-        console.log('✅ Quiz generated successfully for book:', book.title);
+        console.log(`✅ Quiz generated successfully for book: ${book.title}, age group: ${ageGroup}`);
 
         res.json({
-            quiz: existingQuiz,
+            quiz: {
+                ...existingQuiz.toObject(),
+                questions, // Return the questions for this age group
+                ageGroup
+            },
             cached: false
         });
 
@@ -170,7 +229,7 @@ Return ONLY the JSON array, no explanations or markdown.`
 router.get('/:bookId', async (req, res) => {
     try {
         const { bookId } = req.params;
-        const { userId } = req.query;
+        const { userId, age } = req.query;
 
         const quiz = await BookQuiz.findOne({ bookId });
         
@@ -178,12 +237,30 @@ router.get('/:bookId', async (req, res) => {
             return res.status(404).json({ message: 'Quiz not found for this book' });
         }
 
+        const userAge = parseInt(age) || 6;
+        const ageGroup = BookQuiz.getAgeGroup(userAge);
+        
+        // Get questions for the user's age group
+        const questions = quiz.getQuestionsForAge(userAge);
+        
+        if (!questions || questions.length === 0) {
+            return res.status(404).json({ 
+                message: 'Quiz not found for this age group',
+                needsGeneration: true,
+                ageGroup
+            });
+        }
+
         // Get user's attempt count
         const attemptCount = userId ? quiz.getUserAttemptCount(userId) : 0;
         const canTakeQuiz = userId ? quiz.canUserTakeQuiz(userId) : true;
 
         res.json({
-            quiz,
+            quiz: {
+                ...quiz.toObject(),
+                questions, // Return only the age-appropriate questions
+                ageGroup
+            },
             attemptCount,
             canTakeQuiz,
             maxAttempts: 2
@@ -199,7 +276,7 @@ router.get('/:bookId', async (req, res) => {
 router.post('/:bookId/submit', async (req, res) => {
     try {
         const { bookId } = req.params;
-        const { userId, answers } = req.body;
+        const { userId, answers, age } = req.body;
 
         if (!userId) {
             return res.status(400).json({ message: 'userId is required' });
@@ -224,9 +301,17 @@ router.post('/:bookId/submit', async (req, res) => {
             });
         }
 
+        // Get questions for the user's age group
+        const userAge = parseInt(age) || 6;
+        const questions = quiz.getQuestionsForAge(userAge);
+        
+        if (!questions || questions.length === 0) {
+            return res.status(404).json({ message: 'Quiz questions not found for this age group' });
+        }
+
         // Calculate score
         let correctCount = 0;
-        const results = quiz.questions.map((q, index) => {
+        const results = questions.map((q, index) => {
             const userAnswer = answers[index];
             const correctOption = q.options.findIndex(opt => opt.isCorrect);
             const isCorrect = userAnswer === correctOption;
@@ -246,7 +331,7 @@ router.post('/:bookId/submit', async (req, res) => {
         const attemptNumber = quiz.addAttempt(userId, correctCount, coinsEarned);
         await quiz.save();
 
-        console.log(`📊 Quiz submitted: ${correctCount}/6 correct, ${coinsEarned} coins earned`);
+        console.log(`📊 Quiz submitted (age ${userAge}): ${correctCount}/6 correct, ${coinsEarned} coins earned`);
 
         res.json({
             score: correctCount,
@@ -295,5 +380,28 @@ router.get('/:bookId/attempts/:userId', async (req, res) => {
     }
 });
 
-module.exports = router;
+// GET /api/quiz/:bookId/age-groups - Get available age groups for a book's quiz
+router.get('/:bookId/age-groups', async (req, res) => {
+    try {
+        const { bookId } = req.params;
 
+        const quiz = await BookQuiz.findOne({ bookId });
+        
+        if (!quiz) {
+            return res.json({ ageGroups: [] });
+        }
+
+        const ageGroups = quiz.ageGroupedQuestions.map(g => ({
+            ageGroup: g.ageGroup,
+            questionCount: g.questions.length
+        }));
+
+        res.json({ ageGroups });
+
+    } catch (error) {
+        console.error('Get Age Groups Error:', error.message);
+        res.status(500).json({ message: 'Failed to get age groups', error: error.message });
+    }
+});
+
+module.exports = router;

@@ -20,7 +20,7 @@ const questionSchema = new mongoose.Schema({
 
 // Schema for user quiz attempts
 const attemptSchema = new mongoose.Schema({
-    odlykids_user_id: {
+    godlykids_user_id: {
         type: String,
         required: true,
     },
@@ -44,6 +44,16 @@ const attemptSchema = new mongoose.Schema({
     },
 });
 
+// Schema for age-grouped questions
+const ageGroupQuestionsSchema = new mongoose.Schema({
+    ageGroup: {
+        type: String,
+        required: true,
+        enum: ['3-5', '6-8', '9-12'], // Age ranges
+    },
+    questions: [questionSchema],
+});
+
 // Main BookQuiz schema
 const bookQuizSchema = new mongoose.Schema({
     bookId: {
@@ -52,9 +62,9 @@ const bookQuizSchema = new mongoose.Schema({
         required: true,
         index: true,
     },
-    // The generated quiz questions (6 questions)
-    questions: [questionSchema],
-    // Track attempts per user
+    // Age-grouped quiz questions - each book can have different quizzes for different age groups
+    ageGroupedQuestions: [ageGroupQuestionsSchema],
+    // Track attempts per user (includes the age group they took)
     attempts: [attemptSchema],
     // Metadata
     createdAt: {
@@ -69,6 +79,40 @@ const bookQuizSchema = new mongoose.Schema({
 
 // Compound index for efficient lookups
 bookQuizSchema.index({ bookId: 1 });
+
+// Helper to determine age group from age
+bookQuizSchema.statics.getAgeGroup = function(age) {
+    if (!age || age < 3) return '3-5'; // Default to youngest
+    if (age <= 5) return '3-5';
+    if (age <= 8) return '6-8';
+    return '9-12';
+};
+
+// Helper method to get questions for a specific age group
+bookQuizSchema.methods.getQuestionsForAge = function(age) {
+    const ageGroup = this.constructor.getAgeGroup(age);
+    const groupData = this.ageGroupedQuestions.find(g => g.ageGroup === ageGroup);
+    return groupData ? groupData.questions : null;
+};
+
+// Helper method to check if questions exist for an age group
+bookQuizSchema.methods.hasQuestionsForAge = function(age) {
+    const ageGroup = this.constructor.getAgeGroup(age);
+    const groupData = this.ageGroupedQuestions.find(g => g.ageGroup === ageGroup);
+    return groupData && groupData.questions && groupData.questions.length > 0;
+};
+
+// Helper method to add questions for an age group
+bookQuizSchema.methods.setQuestionsForAge = function(age, questions) {
+    const ageGroup = this.constructor.getAgeGroup(age);
+    const existingIndex = this.ageGroupedQuestions.findIndex(g => g.ageGroup === ageGroup);
+    
+    if (existingIndex >= 0) {
+        this.ageGroupedQuestions[existingIndex].questions = questions;
+    } else {
+        this.ageGroupedQuestions.push({ ageGroup, questions });
+    }
+};
 
 // Helper method to get user's attempt count
 bookQuizSchema.methods.getUserAttemptCount = function(userId) {
@@ -104,4 +148,3 @@ bookQuizSchema.pre('save', function(next) {
 });
 
 module.exports = mongoose.model('BookQuiz', bookQuizSchema);
-
