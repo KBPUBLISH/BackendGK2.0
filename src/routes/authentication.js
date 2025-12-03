@@ -8,15 +8,18 @@ router.post('/sign-up', async (req, res) => {
     const { email, password, firstName, lastName, age, deviceInfo } = req.body;
 
     try {
+        // Normalize email to lowercase
+        const normalizedEmail = email.toLowerCase().trim();
+        
         // Check if user already exists
-        let user = await User.findOne({ email });
+        let user = await User.findOne({ email: normalizedEmail });
         if (user) {
-            return res.status(400).json({ message: 'User already exists' });
+            return res.status(400).json({ message: 'User already exists with this email' });
         }
 
         // Create unique username from email prefix + random suffix
         // This ensures uniqueness even if firstName is generic like "User"
-        const emailPrefix = email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+        const emailPrefix = normalizedEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
         const randomSuffix = Math.random().toString(36).substring(2, 8);
         const baseUsername = firstName && firstName !== 'User' ? firstName : emailPrefix;
         let username = `${baseUsername}_${randomSuffix}`;
@@ -32,11 +35,13 @@ router.post('/sign-up', async (req, res) => {
         // Create new user
         user = new User({
             username,
-            email,
+            email: normalizedEmail,
             password,
         });
 
         await user.save();
+        
+        console.log(`✅ User created successfully: ${normalizedEmail} (username: ${username})`);
 
         // Generate tokens
         const payload = {
@@ -77,17 +82,24 @@ router.post('/sign-in', async (req, res) => {
     const { email, password, deviceInfo } = req.body;
 
     try {
+        // Normalize email to lowercase
+        const normalizedEmail = email.toLowerCase().trim();
+        
         // Find user
-        let user = await User.findOne({ email });
+        let user = await User.findOne({ email: normalizedEmail });
         if (!user) {
+            console.log(`❌ Sign-in failed: No user found with email ${normalizedEmail}`);
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
         // Check password
         const isMatch = await user.matchPassword(password);
         if (!isMatch) {
+            console.log(`❌ Sign-in failed: Password mismatch for ${normalizedEmail}`);
             return res.status(400).json({ message: 'Invalid credentials' });
         }
+        
+        console.log(`✅ Sign-in successful: ${normalizedEmail}`);
 
         // Generate tokens
         const payload = {
@@ -160,6 +172,50 @@ router.post('/sign-in/skip', async (req, res) => {
         });
     } catch (err) {
         console.error('Sign-in skip error:', err.message);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Reset password endpoint (for fixing accounts with password issues)
+router.post('/reset-password', async (req, res) => {
+    const { email, newPassword } = req.body;
+
+    try {
+        const normalizedEmail = email.toLowerCase().trim();
+        
+        let user = await User.findOne({ email: normalizedEmail });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Update password (the pre-save hook will hash it)
+        user.password = newPassword;
+        await user.save();
+        
+        console.log(`✅ Password reset successful for: ${normalizedEmail}`);
+
+        res.json({ message: 'Password reset successfully' });
+    } catch (err) {
+        console.error('Password reset error:', err.message);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Delete user endpoint (for testing/cleanup)
+router.delete('/user/:email', async (req, res) => {
+    try {
+        const normalizedEmail = req.params.email.toLowerCase().trim();
+        
+        const result = await User.deleteOne({ email: normalizedEmail });
+        
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        console.log(`🗑️ User deleted: ${normalizedEmail}`);
+        res.json({ message: 'User deleted successfully' });
+    } catch (err) {
+        console.error('Delete user error:', err.message);
         res.status(500).json({ message: 'Server error' });
     }
 });
