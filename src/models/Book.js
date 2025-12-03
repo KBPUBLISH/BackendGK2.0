@@ -32,6 +32,13 @@ const bookSchema = new mongoose.Schema({
         default: 'draft',
     },
     
+    // Book orientation - portrait (default) or landscape
+    orientation: {
+        type: String,
+        enum: ['portrait', 'landscape'],
+        default: 'portrait',
+    },
+    
     // Access control - whether content requires membership
     isMembersOnly: {
         type: Boolean,
