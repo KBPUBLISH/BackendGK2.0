@@ -9,7 +9,14 @@ const lessonSchema = new mongoose.Schema({
     description: {
         type: String,
     },
-    
+
+    // Lesson Type
+    type: {
+        type: String,
+        enum: ['Bible', 'Science', 'Math', 'History', 'English', 'Art', 'Technology'],
+        default: 'Bible',
+    },
+
     // Video content
     video: {
         url: {
@@ -23,7 +30,7 @@ const lessonSchema = new mongoose.Schema({
             type: Number, // Duration in seconds
         },
     },
-    
+
     // Captions with timestamps
     captions: [{
         text: {
@@ -39,7 +46,7 @@ const lessonSchema = new mongoose.Schema({
             required: true,
         },
     }],
-    
+
     // Devotional content (screen 2)
     devotional: {
         title: {
@@ -55,7 +62,7 @@ const lessonSchema = new mongoose.Schema({
             type: String, // Full verse text
         },
     },
-    
+
     // Activity content (screen 3)
     activity: {
         type: {
@@ -99,7 +106,7 @@ const lessonSchema = new mongoose.Schema({
             type: String,
         },
     },
-    
+
     // Scheduling
     scheduledDate: {
         type: Date, // When the lesson should be available
@@ -107,26 +114,26 @@ const lessonSchema = new mongoose.Schema({
     publishedDate: {
         type: Date, // When the lesson was published
     },
-    
+
     // Status
     status: {
         type: String,
         enum: ['draft', 'scheduled', 'published', 'archived'],
         default: 'draft',
     },
-    
+
     // Reward
     coinReward: {
         type: Number,
         default: 50, // Default 50 gold coins
     },
-    
+
     // Order/Position for drag-and-drop
     order: {
         type: Number,
         default: 0,
     },
-    
+
     // Metadata
     createdAt: {
         type: Date,
@@ -139,7 +146,7 @@ const lessonSchema = new mongoose.Schema({
 });
 
 // Update updatedAt on save
-lessonSchema.pre('save', function(next) {
+lessonSchema.pre('save', function (next) {
     this.updatedAt = Date.now();
     if (typeof next === 'function') {
         next();

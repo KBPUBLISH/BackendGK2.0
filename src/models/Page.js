@@ -12,14 +12,20 @@ const pageSchema = new mongoose.Schema({
         type: Number,
         required: true,
     },
-    
+
+    // Feature flags
+    isColoringPage: {
+        type: Boolean,
+        default: false
+    },
+
     // Page content - organized structure
     content: {
         // Text content on the page
         text: {
             type: String,
         },
-        
+
         // Text boxes with styling
         textBoxes: [{
             text: String,
@@ -32,7 +38,7 @@ const pageSchema = new mongoose.Schema({
             color: { type: String, default: '#4a3b2a' },
         }],
     },
-    
+
     // Page files - organized per page
     files: {
         // Background (image or video)
@@ -40,34 +46,34 @@ const pageSchema = new mongoose.Schema({
             url: { type: String }, // URL to GCS: books/{bookId}/pages/page-{pageNumber}.{ext}
             type: { type: String, enum: ['image', 'video'] },
         },
-        
+
         // Scroll overlay image
         scroll: {
             url: { type: String }, // URL to GCS: books/{bookId}/scroll/filename
             height: { type: Number }, // Height in px for scroll overlay
         },
-        
+
         // Page-specific images
         images: [{
             url: { type: String }, // URL to GCS: books/{bookId}/pages/images/filename
             filename: { type: String },
             uploadedAt: { type: Date, default: Date.now },
         }],
-        
+
         // Page-specific videos
         videos: [{
             url: { type: String }, // URL to GCS: books/{bookId}/pages/videos/filename
             filename: { type: String },
             uploadedAt: { type: Date, default: Date.now },
         }],
-        
+
         // Audio narration for this page
         audio: {
             url: { type: String }, // URL to GCS: books/{bookId}/audio/page-{pageNumber}.mp3
             filename: { type: String },
             uploadedAt: { type: Date, default: Date.now },
         },
-        
+
         // Sound effect for this page (1-3 seconds, plays on bubble tap)
         soundEffect: {
             url: { type: String }, // URL to GCS: books/{bookId}/sound-effects/page-{pageNumber}.mp3
@@ -75,7 +81,7 @@ const pageSchema = new mongoose.Schema({
             uploadedAt: { type: Date, default: Date.now },
         },
     },
-    
+
     // Legacy fields (for backward compatibility)
     imageUrl: { type: String },
     audioUrl: { type: String },
@@ -83,7 +89,7 @@ const pageSchema = new mongoose.Schema({
     backgroundType: { type: String, enum: ['image', 'video'] },
     scrollUrl: { type: String },
     scrollHeight: { type: Number },
-    
+
     createdAt: {
         type: Date,
         default: Date.now,
@@ -95,7 +101,7 @@ const pageSchema = new mongoose.Schema({
 });
 
 // Update updatedAt on save
-pageSchema.pre('save', function(next) {
+pageSchema.pre('save', function (next) {
     this.updatedAt = Date.now();
     if (typeof next === 'function') {
         next();
