@@ -5,6 +5,80 @@ const LessonCompletion = require('../models/LessonCompletion');
 const { generateActivityFromDevotional } = require('../services/aiService');
 const { notifyNewLesson } = require('../services/notificationService');
 
+// GET /api/lessons/calendar - Get lessons for calendar view (by date range)
+// Query params: startDate, endDate (ISO date strings)
+router.get('/calendar', async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        
+        if (!startDate || !endDate) {
+            return res.status(400).json({ message: 'startDate and endDate are required' });
+        }
+        
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
+        // Get all lessons with scheduledDate in the range
+        const lessons = await Lesson.find({
+            scheduledDate: {
+                $gte: start,
+                $lte: end
+            }
+        }).sort({ scheduledDate: 1 });
+        
+        // Group by date for calendar display
+        const calendarData = {};
+        lessons.forEach(lesson => {
+            if (lesson.scheduledDate) {
+                const dateKey = lesson.scheduledDate.toISOString().split('T')[0];
+                if (!calendarData[dateKey]) {
+                    calendarData[dateKey] = [];
+                }
+                calendarData[dateKey].push(lesson);
+            }
+        });
+        
+        res.json({ lessons, calendarData });
+    } catch (error) {
+        console.error('Error fetching calendar lessons:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// PUT /api/lessons/schedule - Assign a lesson to a specific date
+router.put('/schedule', async (req, res) => {
+    try {
+        const { lessonId, date } = req.body;
+        
+        if (!lessonId) {
+            return res.status(400).json({ message: 'lessonId is required' });
+        }
+        
+        const lesson = await Lesson.findById(lessonId);
+        if (!lesson) {
+            return res.status(404).json({ message: 'Lesson not found' });
+        }
+        
+        // If date is null/undefined, unschedule the lesson
+        if (!date) {
+            lesson.scheduledDate = null;
+            lesson.status = 'draft';
+        } else {
+            lesson.scheduledDate = new Date(date);
+            // Set status to scheduled if it was draft
+            if (lesson.status === 'draft') {
+                lesson.status = 'scheduled';
+            }
+        }
+        
+        await lesson.save();
+        res.json(lesson);
+    } catch (error) {
+        console.error('Error scheduling lesson:', error);
+        res.status(400).json({ message: error.message });
+    }
+});
+
 // GET /api/lessons - Get all lessons (with optional filtering)
 // Query params: status, scheduledDate, published
 router.get('/', async (req, res) => {
