@@ -27,6 +27,8 @@ const analyticsEventSchema = new mongoose.Schema({
             
             // Content views
             'book_view',
+            'book_page_view',
+            'book_read_progress',
             'book_read_complete',
             'playlist_view',
             'playlist_play',

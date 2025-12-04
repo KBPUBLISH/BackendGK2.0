@@ -101,6 +101,22 @@ const bookSchema = new mongoose.Schema({
         default: 0,
     },
     
+    // Completion rate tracking
+    totalPagesViewed: {
+        type: Number,
+        default: 0,
+    },
+    totalReadSessions: {
+        type: Number,
+        default: 0,
+    },
+    // Average completion rate (0-100) = (totalPagesViewed / (totalReadSessions * totalPages)) * 100
+    // Updated periodically or on read session end
+    averageCompletionRate: {
+        type: Number,
+        default: 0,
+    },
+    
     // Whether this book has a quiz
     hasQuiz: {
         type: Boolean,

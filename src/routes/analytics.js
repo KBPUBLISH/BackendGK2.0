@@ -104,6 +104,28 @@ async function updateContentCounters(eventType, targetType, targetId) {
                     await Book.findByIdAndUpdate(targetId, { $inc: { readCount: 1 } });
                 }
                 break;
+            case 'book_read_progress':
+                // Track reading progress for completion rate calculation
+                // metadata should include: { currentPage, totalPages, pagesViewed }
+                if (targetType === 'book' && metadata?.pagesViewed && metadata?.totalPages) {
+                    const book = await Book.findById(targetId);
+                    if (book) {
+                        const newTotalPagesViewed = (book.totalPagesViewed || 0) + metadata.pagesViewed;
+                        const newTotalReadSessions = (book.totalReadSessions || 0) + 1;
+                        const totalPages = metadata.totalPages || 1;
+                        // Calculate average completion rate
+                        const avgCompletionRate = Math.min(100, Math.round((newTotalPagesViewed / (newTotalReadSessions * totalPages)) * 100));
+                        
+                        await Book.findByIdAndUpdate(targetId, {
+                            $inc: { 
+                                totalPagesViewed: metadata.pagesViewed,
+                                totalReadSessions: 1 
+                            },
+                            $set: { averageCompletionRate: avgCompletionRate }
+                        });
+                    }
+                }
+                break;
             case 'book_like':
                 if (targetType === 'book') {
                     await Book.findByIdAndUpdate(targetId, { $inc: { likeCount: 1 } });
