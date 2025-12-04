@@ -133,6 +133,16 @@ const lessonSchema = new mongoose.Schema({
         type: Number,
         default: 0,
     },
+    
+    // Analytics counters
+    viewCount: {
+        type: Number,
+        default: 0,
+    },
+    completionCount: {
+        type: Number,
+        default: 0,
+    },
 
     // Metadata
     createdAt: {

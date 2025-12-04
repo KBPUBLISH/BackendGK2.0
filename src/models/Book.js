@@ -75,6 +75,38 @@ const bookSchema = new mongoose.Schema({
         default: 0,
     },
     
+    // Analytics counters
+    viewCount: {
+        type: Number,
+        default: 0,
+    },
+    quizStartCount: {
+        type: Number,
+        default: 0,
+    },
+    quizCompletionCount: {
+        type: Number,
+        default: 0,
+    },
+    coloringSessionsCount: {
+        type: Number,
+        default: 0,
+    },
+    gameUnlockCount: {
+        type: Number,
+        default: 0,
+    },
+    gameOpenCount: {
+        type: Number,
+        default: 0,
+    },
+    
+    // Whether this book has a quiz
+    hasQuiz: {
+        type: Boolean,
+        default: false,
+    },
+    
     // Organized file structure per book
     files: {
         type: {
