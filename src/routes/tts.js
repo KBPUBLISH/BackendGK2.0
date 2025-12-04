@@ -63,6 +63,86 @@ const saveLocal = (buffer, gcsPath) => {
     });
 };
 
+/**
+ * Process ElevenLabs character-level alignment into word-level timing
+ * @param {string} text - The original text that was sent to TTS
+ * @param {object} alignment - ElevenLabs alignment object with characters and timing arrays
+ * @returns {object} - Word-level alignment data
+ */
+const processAlignmentToWords = (text, alignment) => {
+    if (!alignment || !alignment.characters || !alignment.character_start_times_seconds) {
+        console.warn('⚠️ No valid alignment data received');
+        // Fallback to estimated timing
+        const words = text.split(/\s+/).filter(w => w.length > 0);
+        const estimatedDurationPerWord = 0.4;
+        return {
+            words: words.map((word, index) => ({
+                word,
+                start: index * estimatedDurationPerWord,
+                end: (index + 1) * estimatedDurationPerWord
+            })),
+            isEstimated: true
+        };
+    }
+
+    const { characters, character_start_times_seconds, character_end_times_seconds } = alignment;
+    
+    // Build word-level timing from character timing
+    const words = [];
+    let currentWord = '';
+    let wordStartTime = null;
+    let wordEndTime = null;
+    
+    for (let i = 0; i < characters.length; i++) {
+        const char = characters[i];
+        const startTime = character_start_times_seconds[i];
+        const endTime = character_end_times_seconds[i];
+        
+        // Check if this is a word boundary (space, newline, or punctuation followed by space)
+        if (char === ' ' || char === '\n' || char === '\t') {
+            // End current word if we have one
+            if (currentWord.trim().length > 0) {
+                words.push({
+                    word: currentWord.trim(),
+                    start: wordStartTime,
+                    end: wordEndTime
+                });
+            }
+            currentWord = '';
+            wordStartTime = null;
+            wordEndTime = null;
+        } else {
+            // Add character to current word
+            if (wordStartTime === null) {
+                wordStartTime = startTime;
+            }
+            wordEndTime = endTime;
+            currentWord += char;
+        }
+    }
+    
+    // Don't forget the last word
+    if (currentWord.trim().length > 0) {
+        words.push({
+            word: currentWord.trim(),
+            start: wordStartTime,
+            end: wordEndTime
+        });
+    }
+    
+    console.log('📊 Processed alignment:', {
+        totalCharacters: characters.length,
+        totalWords: words.length,
+        firstWord: words[0],
+        lastWord: words[words.length - 1]
+    });
+    
+    return {
+        words,
+        isEstimated: false
+    };
+};
+
 // POST /generate - Generate TTS audio
 router.post('/generate', async (req, res) => {
     try {
@@ -84,21 +164,23 @@ router.post('/generate', async (req, res) => {
             });
         }
 
-        console.log('TTS Cache Miss - Generating Audio');
+        console.log('TTS Cache Miss - Generating Audio with Timestamps');
         let audioBuffer;
+        let alignmentData;
 
-        // ELEVENLABS GENERATION (for all voices including cloned)
+        // ELEVENLABS GENERATION WITH TIMESTAMPS
         const apiKey = process.env.ELEVENLABS_API_KEY;
         if (!apiKey) {
             return res.status(500).json({ message: 'TTS Generation Failed', error: 'apiKey is not defined' });
         }
 
         const modelId = "eleven_v3";
-        console.log('🎤 Generating TTS with ElevenLabs model:', modelId);
+        console.log('🎤 Generating TTS with ElevenLabs model:', modelId, '(with timestamps)');
 
         try {
+            // Use the /with-timestamps endpoint to get word-level timing
             const response = await axios.post(
-                `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+                `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
                 {
                     text,
                     model_id: modelId,
@@ -113,41 +195,75 @@ router.post('/generate', async (req, res) => {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    responseType: 'arraybuffer',
                     params: {
-                        output_format: 'mp3_44100_128',
-                        enable_logging: false
+                        output_format: 'mp3_44100_128'
                     }
                 }
             );
-            audioBuffer = response.data;
+
+            // Response contains: audio_base64, alignment (with characters and timing)
+            const { audio_base64, alignment } = response.data;
+            
+            // Convert base64 audio to buffer
+            audioBuffer = Buffer.from(audio_base64, 'base64');
+            
+            // Process character-level alignment into word-level timing
+            alignmentData = processAlignmentToWords(text, alignment);
+            
+            console.log('✅ Got alignment data:', {
+                characters: alignment?.characters?.length || 0,
+                words: alignmentData?.words?.length || 0
+            });
+
         } catch (error) {
-            console.error('❌ ElevenLabs API Error:', error.response?.status);
-            throw error;
+            console.error('❌ ElevenLabs API Error:', error.response?.status, error.response?.data);
+            
+            // Fallback to regular TTS without timestamps if /with-timestamps fails
+            console.log('⚠️ Falling back to TTS without timestamps...');
+            try {
+                const fallbackResponse = await axios.post(
+                    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+                    {
+                        text,
+                        model_id: modelId,
+                        voice_settings: {
+                            stability: 0.5,
+                            similarity_boost: 0.75
+                        }
+                    },
+                    {
+                        headers: {
+                            'xi-api-key': apiKey,
+                            'Content-Type': 'application/json'
+                        },
+                        responseType: 'arraybuffer',
+                        params: {
+                            output_format: 'mp3_44100_128'
+                        }
+                    }
+                );
+                audioBuffer = fallbackResponse.data;
+                
+                // Generate estimated word timing as fallback
+                const words = text.split(/\s+/).filter(w => w.length > 0);
+                const estimatedDurationPerWord = 0.4;
+                alignmentData = {
+                    words: words.map((word, index) => ({
+                        word,
+                        start: index * estimatedDurationPerWord,
+                        end: (index + 1) * estimatedDurationPerWord
+                    })),
+                    isEstimated: true
+                };
+            } catch (fallbackError) {
+                console.error('❌ Fallback TTS also failed:', fallbackError.message);
+                throw fallbackError;
+            }
         }
 
         // 3. Save Audio
         const filename = `${Date.now()}_${textHash}.mp3`;
         const audioUrl = await saveAudioFile(audioBuffer, filename, bookId);
-
-        // 4. Generate word-level alignment data (Estimate)
-        const words = text.split(/\s+/).filter(w => w.length > 0);
-        const estimatedDurationPerWord = 0.4; // seconds
-
-        const alignmentData = {
-            words: words.map((word, index) => {
-                const startTime = index * estimatedDurationPerWord;
-                const endTime = (index + 1) * estimatedDurationPerWord;
-                return {
-                    word: word,
-                    start: startTime,
-                    end: endTime
-                };
-            }),
-            characters: [],
-            character_start_times_seconds: [],
-            character_end_times_seconds: []
-        };
 
         // 5. Save to Cache (handle duplicate key errors gracefully)
         try {
