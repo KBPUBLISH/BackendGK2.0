@@ -35,6 +35,10 @@ router.get('/book/:bookId', async (req, res) => {
                 }
             }
 
+            // Ensure coloring flags are present
+            if (pageObj.isColoringPage === undefined) pageObj.isColoringPage = false;
+            if (pageObj.coloringEndModalOnly === undefined) pageObj.coloringEndModalOnly = true;
+
             return pageObj;
         });
 
