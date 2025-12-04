@@ -326,7 +326,33 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// POST increment read count (called when a user completes reading a book)
+// POST increment view count (called when a user OPENS a book)
+router.post('/:id/view', async (req, res) => {
+    try {
+        const book = await Book.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { viewCount: 1, totalReadSessions: 1 } },
+            { new: true }
+        );
+        
+        if (!book) {
+            return res.status(404).json({ message: 'Book not found' });
+        }
+        
+        console.log(`👁️ Book "${book.title}" viewed - viewCount: ${book.viewCount}`);
+        res.json({ 
+            viewCount: book.viewCount,
+            readCount: book.readCount,
+            likeCount: book.likeCount,
+            favoriteCount: book.favoriteCount
+        });
+    } catch (error) {
+        console.error('Error incrementing view count:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// POST increment read count (called when a user COMPLETES reading a book)
 router.post('/:id/read', async (req, res) => {
     try {
         const book = await Book.findByIdAndUpdate(
@@ -339,10 +365,40 @@ router.post('/:id/read', async (req, res) => {
             return res.status(404).json({ message: 'Book not found' });
         }
         
-        console.log(`📖 Book "${book.title}" read count incremented to ${book.readCount}`);
+        console.log(`📖 Book "${book.title}" read completed - readCount: ${book.readCount}`);
         res.json({ readCount: book.readCount });
     } catch (error) {
         console.error('Error incrementing read count:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// POST increment like count
+router.post('/:id/like', async (req, res) => {
+    try {
+        const { action } = req.body; // 'add' or 'remove'
+        const increment = action === 'remove' ? -1 : 1;
+        
+        const book = await Book.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { likeCount: increment } },
+            { new: true }
+        );
+        
+        if (!book) {
+            return res.status(404).json({ message: 'Book not found' });
+        }
+        
+        // Ensure count doesn't go negative
+        if (book.likeCount < 0) {
+            book.likeCount = 0;
+            await book.save();
+        }
+        
+        console.log(`👍 Book "${book.title}" like count: ${book.likeCount}`);
+        res.json({ likeCount: book.likeCount });
+    } catch (error) {
+        console.error('Error updating like count:', error);
         res.status(500).json({ message: error.message });
     }
 });

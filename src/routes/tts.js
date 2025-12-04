@@ -584,4 +584,71 @@ router.get('/voices', async (req, res) => {
     }
 });
 
+// DELETE /clear-cache - Clear TTS cache to force regeneration with real timestamps
+// This is useful when timestamp logic has been updated
+router.delete('/clear-cache', async (req, res) => {
+    try {
+        const { textHash, voiceId, clearAll } = req.body;
+        
+        if (clearAll === true) {
+            // Clear all cache entries
+            const result = await TTSCache.deleteMany({});
+            console.log(`🗑️ Cleared entire TTS cache: ${result.deletedCount} entries`);
+            return res.json({ 
+                success: true, 
+                message: `Cleared ${result.deletedCount} cache entries`,
+                deletedCount: result.deletedCount 
+            });
+        }
+        
+        if (textHash && voiceId) {
+            // Clear specific cache entry
+            const result = await TTSCache.deleteOne({ textHash, voiceId });
+            return res.json({ 
+                success: true, 
+                message: result.deletedCount > 0 ? 'Cache entry cleared' : 'No cache entry found',
+                deletedCount: result.deletedCount 
+            });
+        }
+        
+        if (voiceId) {
+            // Clear all cache entries for a specific voice
+            const result = await TTSCache.deleteMany({ voiceId });
+            return res.json({ 
+                success: true, 
+                message: `Cleared ${result.deletedCount} cache entries for voice`,
+                deletedCount: result.deletedCount 
+            });
+        }
+        
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Provide textHash+voiceId, voiceId, or clearAll=true' 
+        });
+        
+    } catch (error) {
+        console.error('Clear Cache Error:', error.message);
+        res.status(500).json({ success: false, message: 'Failed to clear cache', error: error.message });
+    }
+});
+
+// GET /cache-stats - Get TTS cache statistics
+router.get('/cache-stats', async (req, res) => {
+    try {
+        const totalEntries = await TTSCache.countDocuments();
+        const estimatedEntries = await TTSCache.countDocuments({ 'alignmentData.isEstimated': true });
+        const realTimestampEntries = await TTSCache.countDocuments({ 'alignmentData.isEstimated': { $ne: true } });
+        
+        res.json({
+            totalEntries,
+            estimatedEntries,
+            realTimestampEntries,
+            note: 'Entries without isEstimated flag are old cache with estimated timestamps'
+        });
+    } catch (error) {
+        console.error('Cache Stats Error:', error.message);
+        res.status(500).json({ message: 'Failed to get cache stats', error: error.message });
+    }
+});
+
 module.exports = router;
