@@ -39,6 +39,8 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/music', require('./routes/music'));
 app.use('/api/quiz', require('./routes/quiz'));
 app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/migration', require('./routes/migration'));
+app.use('/api/jobs', require('./routes/jobs'));
 
 app.get('/', (req, res) => {
   res.send('Godly Kids Backend API is running');

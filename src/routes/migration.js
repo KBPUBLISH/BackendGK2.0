@@ -1,0 +1,304 @@
+const express = require('express');
+const router = express.Router();
+const axios = require('axios');
+const User = require('../models/User');
+
+// Configuration for old backend
+const OLD_BACKEND_URL = process.env.OLD_BACKEND_URL || 'https://api.devgodlykids.kbpublish.org/api';
+const MIGRATION_API_KEY = process.env.MIGRATION_API_KEY;
+
+/**
+ * POST /api/migration/restore-subscription
+ * Called when user presses "Restore Purchase" in the new app
+ * Checks the old backend for subscription status and updates the user in the new backend
+ */
+router.post('/restore-subscription', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email is required' 
+            });
+        }
+
+        if (!MIGRATION_API_KEY) {
+            console.error('MIGRATION_API_KEY not configured');
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Migration service not configured' 
+            });
+        }
+
+        console.log(`🔄 Migration: Checking subscription for ${email}`);
+
+        // Call old backend to check subscription status
+        let oldBackendResponse;
+        try {
+            oldBackendResponse = await axios.post(
+                `${OLD_BACKEND_URL}/migration/check-subscription`,
+                { email: email.toLowerCase().trim() },
+                { 
+                    headers: { 
+                        'X-Migration-API-Key': MIGRATION_API_KEY,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 10000 // 10 second timeout
+                }
+            );
+        } catch (axiosError) {
+            console.error('Error calling old backend:', axiosError.message);
+            if (axiosError.response) {
+                console.error('Response status:', axiosError.response.status);
+                console.error('Response data:', axiosError.response.data);
+            }
+            return res.status(502).json({ 
+                success: false, 
+                message: 'Unable to connect to old backend',
+                error: axiosError.message
+            });
+        }
+
+        const subscriptionData = oldBackendResponse.data;
+        console.log('📦 Old backend response:', subscriptionData);
+
+        if (!subscriptionData.found) {
+            return res.json({ 
+                success: true, 
+                found: false,
+                message: 'No account found with this email in the old app'
+            });
+        }
+
+        // Check if user has an active subscription
+        const isPaid = subscriptionData.membership === 'paid';
+        const isActive = isPaid && (
+            !subscriptionData.subscriptionExpiryDate || 
+            subscriptionData.subscriptionExpiryDate > Date.now()
+        );
+
+        // Find or inform about the user in the new backend
+        const userInNewBackend = await User.findOne({ email: email.toLowerCase().trim() });
+
+        if (!userInNewBackend) {
+            return res.json({
+                success: true,
+                found: true,
+                subscriptionFound: isPaid,
+                isActive,
+                message: 'Subscription found but please create an account in the new app first with the same email',
+                subscriptionData: {
+                    membership: subscriptionData.membership,
+                    subscriptionExpiryDate: subscriptionData.subscriptionExpiryDate,
+                    subscriptionStartDate: subscriptionData.subscriptionStartDate,
+                    isTrialUsed: subscriptionData.isTrialUsed,
+                    isTrialActive: subscriptionData.isTrialActive,
+                }
+            });
+        }
+
+        // Update user in new backend if they have an active subscription
+        if (isActive) {
+            const updateData = {
+                isPremium: true,
+                subscriptionStatus: subscriptionData.isTrialActive ? 'trial' : 'active',
+                subscriptionExpiryDate: subscriptionData.subscriptionExpiryDate,
+                subscriptionStartDate: subscriptionData.subscriptionStartDate,
+                migratedFromOldApp: true,
+                oldAppUserId: subscriptionData._id,
+                isTrialUsed: subscriptionData.isTrialUsed,
+                isTrialActive: subscriptionData.isTrialActive,
+            };
+
+            await User.findByIdAndUpdate(userInNewBackend._id, updateData);
+            
+            console.log(`✅ Migration: Updated user ${userInNewBackend._id} with subscription from old app`);
+
+            return res.json({
+                success: true,
+                found: true,
+                subscriptionRestored: true,
+                message: 'Your subscription has been restored successfully!',
+                subscriptionData: {
+                    membership: subscriptionData.membership,
+                    subscriptionExpiryDate: subscriptionData.subscriptionExpiryDate,
+                    subscriptionStartDate: subscriptionData.subscriptionStartDate,
+                    isTrialActive: subscriptionData.isTrialActive,
+                }
+            });
+        } else {
+            // User had a subscription but it's expired
+            const updateData = {
+                migratedFromOldApp: true,
+                oldAppUserId: subscriptionData._id,
+                isTrialUsed: subscriptionData.isTrialUsed,
+            };
+
+            await User.findByIdAndUpdate(userInNewBackend._id, updateData);
+
+            return res.json({
+                success: true,
+                found: true,
+                subscriptionRestored: false,
+                message: isPaid 
+                    ? 'Your subscription was found but has expired. Please renew to continue.' 
+                    : 'Account found but no active subscription.',
+                subscriptionData: {
+                    membership: subscriptionData.membership,
+                    subscriptionExpiryDate: subscriptionData.subscriptionExpiryDate,
+                    subscriptionStartDate: subscriptionData.subscriptionStartDate,
+                }
+            });
+        }
+
+    } catch (error) {
+        console.error('Migration restore-subscription error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to restore subscription',
+            error: error.message 
+        });
+    }
+});
+
+/**
+ * POST /api/migration/check-renewal
+ * Called by cron job to check if expired migrated subscriptions have been renewed
+ */
+router.post('/check-renewal', async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'userId is required' 
+            });
+        }
+
+        const user = await User.findById(userId);
+        
+        if (!user || !user.migratedFromOldApp || !user.email) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'User not found or not migrated from old app' 
+            });
+        }
+
+        // Call old backend to check current subscription status
+        const oldBackendResponse = await axios.post(
+            `${OLD_BACKEND_URL}/migration/check-subscription`,
+            { email: user.email },
+            { 
+                headers: { 
+                    'X-Migration-API-Key': MIGRATION_API_KEY,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 10000
+            }
+        );
+
+        const subscriptionData = oldBackendResponse.data;
+
+        if (!subscriptionData.found) {
+            return res.json({ 
+                success: true, 
+                renewed: false,
+                message: 'User no longer exists in old backend'
+            });
+        }
+
+        const isPaid = subscriptionData.membership === 'paid';
+        const isActive = isPaid && (
+            !subscriptionData.subscriptionExpiryDate || 
+            subscriptionData.subscriptionExpiryDate > Date.now()
+        );
+
+        if (isActive) {
+            // Subscription has been renewed
+            await User.findByIdAndUpdate(userId, {
+                isPremium: true,
+                subscriptionStatus: subscriptionData.isTrialActive ? 'trial' : 'active',
+                subscriptionExpiryDate: subscriptionData.subscriptionExpiryDate,
+                subscriptionStartDate: subscriptionData.subscriptionStartDate,
+            });
+
+            return res.json({
+                success: true,
+                renewed: true,
+                message: 'Subscription renewed',
+                subscriptionData
+            });
+        }
+
+        return res.json({
+            success: true,
+            renewed: false,
+            message: 'Subscription still expired'
+        });
+
+    } catch (error) {
+        console.error('Migration check-renewal error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to check renewal',
+            error: error.message 
+        });
+    }
+});
+
+/**
+ * GET /api/migration/status/:email
+ * Check migration status for a user by email (for debugging)
+ */
+router.get('/status/:email', async (req, res) => {
+    try {
+        const { email } = req.params;
+        
+        const user = await User.findOne(
+            { email: email.toLowerCase().trim() },
+            { 
+                email: 1, 
+                isPremium: 1, 
+                subscriptionStatus: 1,
+                subscriptionExpiryDate: 1,
+                subscriptionStartDate: 1,
+                migratedFromOldApp: 1,
+                oldAppUserId: 1,
+                isTrialUsed: 1,
+                isTrialActive: 1,
+            }
+        );
+
+        if (!user) {
+            return res.json({ found: false });
+        }
+
+        res.json({
+            found: true,
+            user: {
+                email: user.email,
+                isPremium: user.isPremium,
+                subscriptionStatus: user.subscriptionStatus,
+                subscriptionExpiryDate: user.subscriptionExpiryDate,
+                subscriptionStartDate: user.subscriptionStartDate,
+                migratedFromOldApp: user.migratedFromOldApp,
+                oldAppUserId: user.oldAppUserId,
+                isTrialUsed: user.isTrialUsed,
+                isTrialActive: user.isTrialActive,
+            }
+        });
+
+    } catch (error) {
+        console.error('Migration status error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to get migration status',
+            error: error.message 
+        });
+    }
+});
+
+module.exports = router;
+

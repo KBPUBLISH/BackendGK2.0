@@ -25,6 +25,33 @@ const UserSchema = new mongoose.Schema({
     enum: ['free', 'trial', 'active', 'cancelled', 'expired'],
     default: 'free',
   },
+  // Subscription dates (timestamps in ms)
+  subscriptionExpiryDate: {
+    type: Number,
+    default: null,
+  },
+  subscriptionStartDate: {
+    type: Number,
+    default: null,
+  },
+  // Migration tracking
+  migratedFromOldApp: {
+    type: Boolean,
+    default: false,
+  },
+  oldAppUserId: {
+    type: String,
+    default: null,
+  },
+  // Trial tracking
+  isTrialUsed: {
+    type: Boolean,
+    default: false,
+  },
+  isTrialActive: {
+    type: Boolean,
+    default: false,
+  },
 }, {
   timestamps: true, // Adds createdAt and updatedAt automatically
 });
