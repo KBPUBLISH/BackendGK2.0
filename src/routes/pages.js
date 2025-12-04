@@ -104,6 +104,14 @@ router.post('/', async (req, res) => {
     pageData.scrollHeight = req.body.scrollHeight;
     pageData.textBoxes = req.body.textBoxes; // Legacy
 
+    // Coloring page flags
+    if (req.body.isColoringPage !== undefined) {
+        pageData.isColoringPage = req.body.isColoringPage;
+    }
+    if (req.body.coloringEndModalOnly !== undefined) {
+        pageData.coloringEndModalOnly = req.body.coloringEndModalOnly;
+    }
+
     // Check if page with this pageNumber already exists for this book
     const existingPage = await Page.findOne({
         bookId: pageData.bookId,
@@ -261,9 +269,19 @@ router.put('/:id', async (req, res) => {
             page.files.soundEffect = req.body.files.soundEffect;
         }
 
+        // Handle coloring page flags explicitly
+        if (req.body.isColoringPage !== undefined) {
+            page.isColoringPage = req.body.isColoringPage;
+            console.log('Updated isColoringPage:', page.isColoringPage);
+        }
+        if (req.body.coloringEndModalOnly !== undefined) {
+            page.coloringEndModalOnly = req.body.coloringEndModalOnly;
+            console.log('Updated coloringEndModalOnly:', page.coloringEndModalOnly);
+        }
+
         // Update all other fields (but don't overwrite what we just set)
-        // Exclude backgroundUrl, backgroundType, scrollUrl, scrollHeight, and files from otherFields
-        const { textBoxes, content, backgroundUrl, backgroundType, scrollUrl, scrollHeight, files, ...otherFields } = req.body;
+        // Exclude backgroundUrl, backgroundType, scrollUrl, scrollHeight, files, and coloring flags from otherFields
+        const { textBoxes, content, backgroundUrl, backgroundType, scrollUrl, scrollHeight, files, isColoringPage, coloringEndModalOnly, ...otherFields } = req.body;
         Object.assign(page, otherFields);
 
         // Handle content.text if provided
