@@ -300,6 +300,148 @@ Return ONLY the enhanced text with emotion tags inserted. No explanations. Every
     }
 });
 
+// POST /enhance-sfx - Add sound effect prompts to text for ambient audio
+router.post('/enhance-sfx', async (req, res) => {
+    try {
+        const { text } = req.body;
+
+        if (!text || text.trim().length === 0) {
+            return res.status(400).json({ message: 'Text is required' });
+        }
+
+        // Common sound effect categories for children's stories
+        const soundEffectExamples = [
+            // Nature sounds
+            '[gentle wind breeze]', '[wind howling]', '[leaves rustling]', '[rain falling]',
+            '[thunder rumbling]', '[birds chirping]', '[owl hooting]', '[crickets chirping]',
+            '[water flowing]', '[waves crashing]', '[waterfall]', '[campfire crackling]',
+            // Animal sounds
+            '[dog barking]', '[cat meowing]', '[horse neighing]', '[cow mooing]',
+            '[rooster crowing]', '[sheep bleating]', '[pig oinking]', '[wolf howling]',
+            '[lion roaring]', '[elephant trumpeting]', '[frog croaking]', '[bee buzzing]',
+            // Environment sounds
+            '[door creaking]', '[door slamming]', '[footsteps approaching]', '[footsteps on leaves]',
+            '[floorboards creaking]', '[clock ticking]', '[bell ringing]', '[church bells]',
+            '[car engine]', '[train whistle]', '[airplane overhead]', '[horse galloping]',
+            // Action sounds
+            '[glass breaking]', '[wood chopping]', '[hammer pounding]', '[splash]',
+            '[swoosh]', '[thud]', '[crash]', '[pop]', '[click]', '[snap]',
+            // Magical/Fantasy sounds
+            '[magical sparkle]', '[mystical chime]', '[fairy dust]', '[spell casting]',
+            '[dragon roar]', '[sword clashing]', '[arrow whoosh]', '[portal opening]',
+            // Emotional/Ambient sounds
+            '[gentle music]', '[suspenseful music]', '[happy melody]', '[sad melody]',
+            '[heartbeat]', '[crowd cheering]', '[children laughing]', '[applause]'
+        ];
+
+        // Use OpenAI to intelligently add sound effect prompts
+        const openaiKey = process.env.OPENAI_API_KEY;
+        
+        if (openaiKey) {
+            try {
+                const response = await axios.post(
+                    'https://api.openai.com/v1/chat/completions',
+                    {
+                        model: 'gpt-4o-mini',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: `You are a children's book sound designer. Your job is to enhance story text with sound effect cues that will trigger ambient audio.
+
+Example sound effects you can use:
+${soundEffectExamples.join(', ')}
+
+You can also create custom sound effects in the same format: [descriptive sound].
+
+RULES:
+1. Place sound effect tags at the START of sentences or phrases where the sound should play
+2. Use descriptive, clear sound names that match the scene
+3. Don't overuse - typically 1-2 sound effects per paragraph is enough
+4. Match the sound to the story's mood and setting
+5. For nature scenes, add ambient sounds like wind, birds, water
+6. For indoor scenes, consider footsteps, doors, clocks
+7. For action scenes, add impact sounds like thuds, crashes, swooshes
+8. For magical scenes, use mystical sounds
+9. Keep all original text intact - only add sound effect tags
+
+Examples:
+- Input: "The old door swung open slowly."
+  Output: "[door creaking] The old door swung open slowly."
+
+- Input: "Outside, a storm was brewing."
+  Output: "[thunder rumbling] Outside, a storm was brewing. [rain falling]"
+
+- Input: "The princess waved her wand."
+  Output: "[magical sparkle] The princess waved her wand."
+
+Return ONLY the enhanced text with sound effect tags inserted. No explanations.`
+                            },
+                            {
+                                role: 'user',
+                                content: `Add appropriate sound effect cues to this children's story text:\n\n${text}`
+                            }
+                        ],
+                        temperature: 0.7,
+                        max_tokens: 2000
+                    },
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${openaiKey}`,
+                            'Content-Type': 'application/json'
+                        }
+                    }
+                );
+
+                const enhancedText = response.data.choices[0].message.content.trim();
+                return res.json({ enhancedText, method: 'ai' });
+            } catch (aiError) {
+                console.error('OpenAI SFX enhancement failed, falling back to rule-based:', aiError.message);
+            }
+        }
+
+        // Fallback: Simple rule-based sound effect enhancement
+        let enhancedText = text;
+
+        // Nature keywords
+        enhancedText = enhancedText.replace(/\b(wind blew|breeze|windy)\b/gi, '[gentle wind breeze] $1');
+        enhancedText = enhancedText.replace(/\b(storm|stormy|lightning)\b/gi, '[thunder rumbling] $1');
+        enhancedText = enhancedText.replace(/\b(rain|raining|rainy)\b/gi, '[rain falling] $1');
+        enhancedText = enhancedText.replace(/\b(forest|woods|trees)\b/gi, '[birds chirping] $1');
+        enhancedText = enhancedText.replace(/\b(river|stream|creek)\b/gi, '[water flowing] $1');
+        enhancedText = enhancedText.replace(/\b(ocean|sea|beach)\b/gi, '[waves crashing] $1');
+        enhancedText = enhancedText.replace(/\b(fire|fireplace|campfire)\b/gi, '[fire crackling] $1');
+
+        // Animal sounds
+        enhancedText = enhancedText.replace(/\b(dog barked|puppy)\b/gi, '[dog barking] $1');
+        enhancedText = enhancedText.replace(/\b(cat meowed|kitten)\b/gi, '[cat meowing] $1');
+        enhancedText = enhancedText.replace(/\b(horse|pony)\b/gi, '[horse neighing] $1');
+        enhancedText = enhancedText.replace(/\b(owl)\b/gi, '[owl hooting] $1');
+        enhancedText = enhancedText.replace(/\b(rooster|morning)\b/gi, '[rooster crowing] $1');
+
+        // Environment sounds
+        enhancedText = enhancedText.replace(/\b(door opened|door closed|doorway)\b/gi, '[door creaking] $1');
+        enhancedText = enhancedText.replace(/\b(footsteps|walked|walking)\b/gi, '[footsteps approaching] $1');
+        enhancedText = enhancedText.replace(/\b(bell rang|church)\b/gi, '[bell ringing] $1');
+        enhancedText = enhancedText.replace(/\b(clock)\b/gi, '[clock ticking] $1');
+
+        // Action sounds
+        enhancedText = enhancedText.replace(/\b(fell|dropped|crash)\b/gi, '[thud] $1');
+        enhancedText = enhancedText.replace(/\b(splash|water|jumped in)\b/gi, '[splash] $1');
+        enhancedText = enhancedText.replace(/\b(ran|running|hurried)\b/gi, '[footsteps on leaves] $1');
+
+        // Magic sounds
+        enhancedText = enhancedText.replace(/\b(magic|magical|spell|wand)\b/gi, '[magical sparkle] $1');
+        enhancedText = enhancedText.replace(/\b(dragon)\b/gi, '[dragon roar] $1');
+        enhancedText = enhancedText.replace(/\b(fairy|fairies)\b/gi, '[fairy dust] $1');
+
+        res.json({ enhancedText, method: 'rules' });
+
+    } catch (error) {
+        console.error('SFX Enhancement Error:', error.message);
+        res.status(500).json({ message: 'Failed to enhance text with sound effects', error: error.message });
+    }
+});
+
 // GET /voices - Get available voices
 router.get('/voices', async (req, res) => {
     try {
