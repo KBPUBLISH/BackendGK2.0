@@ -2,10 +2,28 @@ const express = require('express');
 const router = express.Router();
 const Category = require('../models/Category');
 
-// Get all categories
+// Get all categories (with optional filters)
+// Query params:
+//   - type: 'book' or 'audio' - filter by category type
+//   - explore: 'true' - only return categories marked for explore page
 router.get('/', async (req, res) => {
     try {
-        const categories = await Category.find().sort({ name: 1 });
+        const { type, explore } = req.query;
+        
+        // Build filter object
+        const filter = {};
+        
+        // Filter by type if specified
+        if (type && ['book', 'audio'].includes(type)) {
+            filter.type = type;
+        }
+        
+        // Filter for explore page categories if specified
+        if (explore === 'true') {
+            filter.showOnExplore = true;
+        }
+        
+        const categories = await Category.find(filter).sort({ name: 1 });
         res.json(categories);
     } catch (error) {
         res.status(500).json({ error: error.message });
