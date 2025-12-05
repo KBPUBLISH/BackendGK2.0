@@ -49,7 +49,7 @@ const ageGroupQuestionsSchema = new mongoose.Schema({
     ageGroup: {
         type: String,
         required: true,
-        enum: ['3-5', '6-8', '9-12'], // Age ranges
+        enum: ['3-5', '6-8', '9-12', '3-5_attempt2', '6-8_attempt2', '9-12_attempt2'], // Age ranges + second attempt variants
     },
     questions: [questionSchema],
 });
@@ -88,23 +88,26 @@ bookQuizSchema.statics.getAgeGroup = function(age) {
     return '9-12';
 };
 
-// Helper method to get questions for a specific age group
-bookQuizSchema.methods.getQuestionsForAge = function(age) {
-    const ageGroup = this.constructor.getAgeGroup(age);
+// Helper method to get questions for a specific age group and attempt
+bookQuizSchema.methods.getQuestionsForAge = function(age, attemptNumber = 1) {
+    const baseAgeGroup = this.constructor.getAgeGroup(age);
+    const ageGroup = attemptNumber === 2 ? `${baseAgeGroup}_attempt2` : baseAgeGroup;
     const groupData = this.ageGroupedQuestions.find(g => g.ageGroup === ageGroup);
     return groupData ? groupData.questions : null;
 };
 
-// Helper method to check if questions exist for an age group
-bookQuizSchema.methods.hasQuestionsForAge = function(age) {
-    const ageGroup = this.constructor.getAgeGroup(age);
+// Helper method to check if questions exist for an age group and attempt
+bookQuizSchema.methods.hasQuestionsForAge = function(age, attemptNumber = 1) {
+    const baseAgeGroup = this.constructor.getAgeGroup(age);
+    const ageGroup = attemptNumber === 2 ? `${baseAgeGroup}_attempt2` : baseAgeGroup;
     const groupData = this.ageGroupedQuestions.find(g => g.ageGroup === ageGroup);
     return groupData && groupData.questions && groupData.questions.length > 0;
 };
 
-// Helper method to add questions for an age group
-bookQuizSchema.methods.setQuestionsForAge = function(age, questions) {
-    const ageGroup = this.constructor.getAgeGroup(age);
+// Helper method to add questions for an age group and attempt
+bookQuizSchema.methods.setQuestionsForAge = function(age, questions, attemptNumber = 1) {
+    const baseAgeGroup = this.constructor.getAgeGroup(age);
+    const ageGroup = attemptNumber === 2 ? `${baseAgeGroup}_attempt2` : baseAgeGroup;
     const existingIndex = this.ageGroupedQuestions.findIndex(g => g.ageGroup === ageGroup);
     
     if (existingIndex >= 0) {

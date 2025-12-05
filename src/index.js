@@ -41,6 +41,7 @@ app.use('/api/quiz', require('./routes/quiz'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/migration', require('./routes/migration'));
 app.use('/api/jobs', require('./routes/jobs'));
+app.use('/api/webhooks', require('./routes/webhooks'));
 
 app.get('/', (req, res) => {
   res.send('Godly Kids Backend API is running');

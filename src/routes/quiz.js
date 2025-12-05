@@ -75,7 +75,7 @@ Use age-appropriate language and focus on spiritual lessons.`;
 // POST /api/quiz/generate - Generate a quiz for a book using AI
 router.post('/generate', async (req, res) => {
     try {
-        const { bookId, age } = req.body;
+        const { bookId, age, attemptNumber = 1 } = req.body;
 
         if (!bookId) {
             return res.status(400).json({ message: 'bookId is required' });
@@ -84,23 +84,35 @@ router.post('/generate', async (req, res) => {
         // Determine age group
         const userAge = parseInt(age) || 6; // Default to 6 if not provided
         const ageGroup = BookQuiz.getAgeGroup(userAge);
+        const isSecondAttempt = attemptNumber === 2;
         
-        console.log(`📚 Quiz request for book ${bookId}, age ${userAge} (group: ${ageGroup})`);
+        console.log(`📚 Quiz request for book ${bookId}, age ${userAge} (group: ${ageGroup}), attempt: ${attemptNumber}`);
 
         // Check if quiz already exists for this book
         let existingQuiz = await BookQuiz.findOne({ bookId });
         
-        // Check if we already have questions for this age group
-        if (existingQuiz && existingQuiz.hasQuestionsForAge(userAge)) {
-            console.log(`📚 Quiz already exists for book ${bookId}, age group ${ageGroup}`);
-            return res.json({
-                quiz: {
-                    ...existingQuiz.toObject(),
-                    questions: existingQuiz.getQuestionsForAge(userAge),
-                    ageGroup
-                },
-                cached: true
-            });
+        // For second attempt, we want DIFFERENT questions
+        // Check if we have questions for this attempt number
+        const cacheKey = isSecondAttempt ? `${ageGroup}_attempt2` : ageGroup;
+        
+        // Check if we already have questions for this age group and attempt
+        if (existingQuiz) {
+            const cachedQuestions = isSecondAttempt 
+                ? existingQuiz.getQuestionsForAge(userAge, 2) // Get attempt 2 questions
+                : existingQuiz.getQuestionsForAge(userAge, 1); // Get attempt 1 questions
+            
+            if (cachedQuestions && cachedQuestions.length > 0) {
+                console.log(`📚 Quiz already exists for book ${bookId}, age group ${ageGroup}, attempt ${attemptNumber}`);
+                return res.json({
+                    quiz: {
+                        ...existingQuiz.toObject(),
+                        questions: cachedQuestions,
+                        ageGroup,
+                        attemptNumber
+                    },
+                    cached: true
+                });
+            }
         }
 
         // Get book details
@@ -158,6 +170,11 @@ router.post('/generate', async (req, res) => {
         }
 
         const agePrompt = getAgeAppropriatePrompt(targetAge, targetAgeGroup);
+        
+        // Add instruction for second attempt to generate DIFFERENT questions
+        const attemptInstruction = isSecondAttempt 
+            ? `\n\nIMPORTANT: This is the SECOND ATTEMPT for this quiz. Create COMPLETELY DIFFERENT questions from a typical first attempt. Focus on different aspects of the story, different character moments, and different spiritual lessons. Make these questions explore NEW angles and perspectives.`
+            : '';
 
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
@@ -168,7 +185,7 @@ router.post('/generate', async (req, res) => {
                         role: 'system',
                         content: `${agePrompt}
 
-Create exactly 6 multiple-choice questions based on the story content provided.
+Create exactly 6 multiple-choice questions based on the story content provided.${attemptInstruction}
 
 General Rules:
 1. Create exactly 6 multiple-choice questions
@@ -201,10 +218,10 @@ Return ONLY the JSON array, no explanations or markdown.`
                     },
                     {
                         role: 'user',
-                        content: `Create a 6-question spiritual quiz for a ${targetAge}-year-old child about this Christian story titled "${book.title}". Focus on faith, Biblical values, and life lessons:\n\n${storyContent.substring(0, 4000)}`
+                        content: `Create a 6-question spiritual quiz for a ${targetAge}-year-old child about this Christian story titled "${book.title}".${isSecondAttempt ? ' This is attempt #2 - create DIFFERENT questions than would be in attempt #1.' : ''} Focus on faith, Biblical values, and life lessons:\n\n${storyContent.substring(0, 4000)}`
                     }
                 ],
-                temperature: 0.7,
+                temperature: isSecondAttempt ? 0.9 : 0.7, // Higher temperature for more variety on second attempt
                 max_tokens: 2000
             },
             {
@@ -241,17 +258,18 @@ Return ONLY the JSON array, no explanations or markdown.`
             });
         }
         
-        // Add questions for this age group
-        existingQuiz.setQuestionsForAge(userAge, questions);
+        // Add questions for this age group and attempt number
+        existingQuiz.setQuestionsForAge(userAge, questions, attemptNumber);
         await existingQuiz.save();
 
-        console.log(`✅ Quiz generated successfully for book: ${book.title}, age group: ${ageGroup}`);
+        console.log(`✅ Quiz generated successfully for book: ${book.title}, age group: ${ageGroup}, attempt: ${attemptNumber}`);
 
         res.json({
             quiz: {
                 ...existingQuiz.toObject(),
                 questions, // Return the questions for this age group
-                ageGroup
+                ageGroup,
+                attemptNumber
             },
             cached: false
         });
