@@ -4,7 +4,7 @@ const Book = require('../models/Book');
 const mongoose = require('mongoose');
 const { notifyNewBook } = require('../services/notificationService');
 
-// GET all books
+// GET all books (with pagination support)
 router.get('/', async (req, res) => {
     try {
         // Wait for MongoDB connection if it's still connecting
@@ -33,22 +33,49 @@ router.get('/', async (req, res) => {
             }
         }
         
-        const books = await Book.find().sort({ createdAt: -1 });
+        // Pagination parameters
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 per page
+        const skip = (page - 1) * limit;
+        
+        // Filter parameters
+        const filter = {};
+        if (req.query.status) filter.status = req.query.status;
+        if (req.query.categoryId) filter.categoryId = req.query.categoryId;
+        
+        // Get total count for pagination metadata
+        const total = await Book.countDocuments(filter);
+        
+        // Fetch books with pagination
+        const books = await Book.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(); // Use lean() for better performance - returns plain JS objects
         
         // Map books to include coverImage for backward compatibility
         const booksWithCoverImage = books.map(book => {
-            const bookObj = book.toObject();
             // Add coverImage at root level from files.coverImage for backward compatibility
-            if (bookObj.files && bookObj.files.coverImage) {
-                bookObj.coverImage = bookObj.files.coverImage;
-            } else if (!bookObj.files) {
+            if (book.files && book.files.coverImage) {
+                book.coverImage = book.files.coverImage;
+            } else if (!book.files) {
                 // If files doesn't exist (old data), keep coverImage as is
-                bookObj.files = { coverImage: bookObj.coverImage || null, images: [], videos: [], audio: [] };
+                book.files = { coverImage: book.coverImage || null, images: [], videos: [], audio: [] };
             }
-            return bookObj;
+            return book;
         });
         
-        res.json(booksWithCoverImage);
+        // Return with pagination metadata
+        res.json({
+            data: booksWithCoverImage,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit),
+                hasMore: page * limit < total
+            }
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

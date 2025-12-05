@@ -3,13 +3,41 @@ const router = express.Router();
 const Playlist = require('../models/Playlist');
 const { notifyNewPlaylist, notifyNewPlaylistItem } = require('../services/notificationService');
 
-// GET all playlists (optionally filtered by status)
+// GET all playlists (with pagination support)
 router.get('/', async (req, res) => {
     try {
-        const { status } = req.query;
-        const query = status ? { status } : {};
-        const playlists = await Playlist.find(query).sort({ createdAt: -1 });
-        res.json(playlists);
+        // Pagination parameters
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 per page
+        const skip = (page - 1) * limit;
+        
+        // Filter parameters
+        const filter = {};
+        if (req.query.status) filter.status = req.query.status;
+        if (req.query.categoryId) filter.categoryId = req.query.categoryId;
+        if (req.query.type) filter.type = req.query.type;
+        
+        // Get total count for pagination metadata
+        const total = await Playlist.countDocuments(filter);
+        
+        // Fetch playlists with pagination
+        const playlists = await Playlist.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(); // Use lean() for better performance
+        
+        // Return with pagination metadata
+        res.json({
+            data: playlists,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit),
+                hasMore: page * limit < total
+            }
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

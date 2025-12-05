@@ -79,11 +79,16 @@ router.put('/schedule', async (req, res) => {
     }
 });
 
-// GET /api/lessons - Get all lessons (with optional filtering)
-// Query params: status, scheduledDate, published
+// GET /api/lessons - Get all lessons (with optional filtering and pagination)
+// Query params: status, scheduledDate, published, page, limit
 router.get('/', async (req, res) => {
     try {
         const { status, published, scheduledDate } = req.query;
+        
+        // Pagination parameters
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 per page
+        const skip = (page - 1) * limit;
         
         // Build query
         const query = {};
@@ -102,10 +107,26 @@ router.get('/', async (req, res) => {
             // Don't filter by date - show all published/scheduled lessons
         }
         
-        const lessons = await Lesson.find(query)
-            .sort({ order: 1, createdAt: -1 });
+        // Get total count for pagination metadata
+        const total = await Lesson.countDocuments(query);
         
-        res.json(lessons);
+        const lessons = await Lesson.find(query)
+            .sort({ order: 1, createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(); // Use lean() for better performance
+        
+        // Return with pagination metadata
+        res.json({
+            data: lessons,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit),
+                hasMore: page * limit < total
+            }
+        });
     } catch (error) {
         console.error('Error fetching lessons:', error);
         res.status(500).json({ message: error.message });
