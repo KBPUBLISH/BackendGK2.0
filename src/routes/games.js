@@ -94,7 +94,10 @@ router.post('/', async (req, res) => {
             });
         }
 
-        const { gameId, name, enabled, description, settings, rewards } = req.body;
+        const { 
+            gameId, name, enabled, description, settings, rewards,
+            url, coverImage, gameType, showInDailyTasks, isPurchasable, goldCoinPrice 
+        } = req.body;
 
         if (!gameId || !name) {
             return res.status(400).json({ message: 'gameId and name are required' });
@@ -110,6 +113,13 @@ router.post('/', async (req, res) => {
             existingGame.description = description || existingGame.description;
             if (settings) existingGame.settings = { ...existingGame.settings, ...settings };
             if (rewards) existingGame.rewards = { ...existingGame.rewards, ...rewards };
+            // Update new fields
+            if (url !== undefined) existingGame.url = url;
+            if (coverImage !== undefined) existingGame.coverImage = coverImage;
+            if (gameType !== undefined) existingGame.gameType = gameType;
+            if (showInDailyTasks !== undefined) existingGame.showInDailyTasks = showInDailyTasks;
+            if (isPurchasable !== undefined) existingGame.isPurchasable = isPurchasable;
+            if (goldCoinPrice !== undefined) existingGame.goldCoinPrice = goldCoinPrice;
             
             const updatedGame = await existingGame.save();
             res.json(updatedGame);
@@ -126,6 +136,12 @@ router.post('/', async (req, res) => {
                     twoStars: 25,
                     oneStar: 10,
                 },
+                url: url || '',
+                coverImage: coverImage || '',
+                gameType: gameType || 'webview',
+                showInDailyTasks: showInDailyTasks !== undefined ? showInDailyTasks : true,
+                isPurchasable: isPurchasable || false,
+                goldCoinPrice: goldCoinPrice || 0,
             });
             
             const newGame = await game.save();
@@ -168,6 +184,13 @@ router.put('/:gameId', async (req, res) => {
         if (req.body.rewards) {
             game.rewards = { ...game.rewards, ...req.body.rewards };
         }
+        // Update new fields
+        if (req.body.url !== undefined) game.url = req.body.url;
+        if (req.body.coverImage !== undefined) game.coverImage = req.body.coverImage;
+        if (req.body.gameType !== undefined) game.gameType = req.body.gameType;
+        if (req.body.showInDailyTasks !== undefined) game.showInDailyTasks = req.body.showInDailyTasks;
+        if (req.body.isPurchasable !== undefined) game.isPurchasable = req.body.isPurchasable;
+        if (req.body.goldCoinPrice !== undefined) game.goldCoinPrice = req.body.goldCoinPrice;
 
         const updatedGame = await game.save();
         res.json(updatedGame);
