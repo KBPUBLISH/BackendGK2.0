@@ -72,10 +72,10 @@ const uploadLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-// Analytics limiter (prevent scraping - 30 per minute)
+// Analytics limiter (portal admin feature - 200 per minute)
 const analyticsLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
-    max: 30,             // 30 requests per minute
+    max: 200,            // 200 requests per minute (portal dashboard makes many calls)
     message: {
         error: 'Analytics rate limit exceeded',
         message: 'Too many analytics requests.',
