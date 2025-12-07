@@ -94,7 +94,11 @@ const pageSchema = new mongoose.Schema({
     backgroundUrl: { type: String },
     backgroundType: { type: String, enum: ['image', 'video'] },
     scrollUrl: { type: String },
-    scrollHeight: { type: Number },
+    scrollHeight: { type: Number }, // Legacy single height
+    
+    // Scroll height settings (percentages for mid and max states)
+    scrollMidHeight: { type: Number, default: 30 }, // Mid scroll height %
+    scrollMaxHeight: { type: Number, default: 60 }, // Max scroll height %
 
     createdAt: {
         type: Date,
