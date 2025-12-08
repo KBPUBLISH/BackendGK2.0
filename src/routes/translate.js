@@ -18,6 +18,7 @@ const SUPPORTED_LANGUAGES = {
     'zh': 'Chinese',
     'ja': 'Japanese',
     'ko': 'Korean',
+    'tl': 'Filipino',
 };
 
 // Generate hash of text for change detection
