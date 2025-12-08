@@ -26,6 +26,21 @@ const generateHash = (text) => {
     return crypto.createHash('md5').update(text || '').digest('hex');
 };
 
+// Decode HTML entities returned by Google Translate API
+const decodeHtmlEntities = (text) => {
+    if (!text) return '';
+    return text
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&#x27;/g, "'")
+        .replace(/&#x2F;/g, '/')
+        .replace(/&apos;/g, "'")
+        .replace(/&nbsp;/g, ' ');
+};
+
 // Translate text using Google Cloud Translation API
 const translateText = async (text, targetLanguage) => {
     if (!text || text.trim() === '') return '';
@@ -63,7 +78,8 @@ const translateText = async (text, targetLanguage) => {
         }
         
         const data = await response.json();
-        return data.data.translations[0].translatedText;
+        // Decode HTML entities that Google Translate returns
+        return decodeHtmlEntities(data.data.translations[0].translatedText);
     } catch (error) {
         console.error('Translation error:', error);
         throw error;
@@ -252,6 +268,36 @@ router.post('/bulk', async (req, res) => {
         
     } catch (error) {
         console.error('Bulk translation error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// DELETE /api/translate/cache - Clear all translation cache (or specific language)
+router.delete('/cache', async (req, res) => {
+    try {
+        const { lang } = req.query;
+        
+        let result;
+        if (lang && lang !== 'en') {
+            // Clear cache for specific language
+            result = await Translation.deleteMany({ languageCode: lang });
+            console.log(`🗑️ Cleared ${result.deletedCount} cached translations for ${lang}`);
+            res.json({ 
+                message: `Cleared ${result.deletedCount} cached translations for ${lang}`,
+                deletedCount: result.deletedCount,
+                language: lang
+            });
+        } else {
+            // Clear all non-English translations
+            result = await Translation.deleteMany({});
+            console.log(`🗑️ Cleared all ${result.deletedCount} cached translations`);
+            res.json({ 
+                message: `Cleared all ${result.deletedCount} cached translations`,
+                deletedCount: result.deletedCount
+            });
+        }
+    } catch (error) {
+        console.error('Cache clear error:', error);
         res.status(500).json({ message: error.message });
     }
 });
