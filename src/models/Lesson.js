@@ -38,11 +38,11 @@ const lessonSchema = new mongoose.Schema({
         default: 'all',
     },
 
-    // Video content
+    // Video content - supports multiple episodes
+    // Legacy single video (for backward compatibility)
     video: {
         url: {
             type: String, // URL to GCS: lessons/{lessonId}/video/filename
-            required: true,
         },
         thumbnail: {
             type: String, // URL to GCS: lessons/{lessonId}/thumbnail/filename
@@ -51,6 +51,27 @@ const lessonSchema = new mongoose.Schema({
             type: Number, // Duration in seconds
         },
     },
+    
+    // New: Multiple episodes support
+    episodes: [{
+        episodeNumber: {
+            type: Number,
+            required: true,
+        },
+        title: {
+            type: String, // Optional: "Episode 1" or custom title
+        },
+        url: {
+            type: String, // URL to GCS: lessons/{lessonId}/episodes/episode-{n}.mp4
+            required: true,
+        },
+        thumbnail: {
+            type: String, // Optional thumbnail for this episode
+        },
+        duration: {
+            type: Number, // Duration in seconds
+        },
+    }],
 
     // Captions with timestamps
     captions: [{
