@@ -6,7 +6,7 @@ const User = require('../models/User');
 // Configuration for old backend
 // IMPORTANT: API key must be set via environment variable - never hardcode secrets
 // Note: The old backend URL should NOT have /api suffix - that's added in the endpoint paths
-const OLD_BACKEND_URL = process.env.OLD_BACKEND_URL || 'https://api.devgodlykids.kbpublish.org';
+const OLD_BACKEND_URL = process.env.OLD_BACKEND_URL || 'https://api.godlykids.kbpublish.org';
 const MIGRATION_API_KEY = process.env.MIGRATION_API_KEY; // Required env variable - this is the OLD backend's API key, not RevenueCat
 
 /**
