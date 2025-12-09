@@ -1,11 +1,17 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const AnalyticsEvent = require('../models/AnalyticsEvent');
 const AppUser = require('../models/AppUser');
 const User = require('../models/User'); // The actual user accounts
 const Book = require('../models/Book');
 const Playlist = require('../models/Playlist');
 const Lesson = require('../models/Lesson');
+
+// Helper to check if a string is a valid MongoDB ObjectId
+const isValidObjectId = (id) => {
+    return mongoose.Types.ObjectId.isValid(id) && (new mongoose.Types.ObjectId(id)).toString() === id;
+};
 
 // Helper to get date range
 const getDateRange = (range) => {
@@ -254,8 +260,13 @@ async function updateUserStats(userId, eventType, metadata) {
         }
 
         if (Object.keys(update).length > 1 || update.$inc) {
+            // Build query - only use _id if it's a valid ObjectId
+            const query = isValidObjectId(userId) 
+                ? { $or: [{ _id: userId }, { deviceId: userId }] }
+                : { deviceId: userId };
+            
             await AppUser.findOneAndUpdate(
-                { $or: [{ _id: userId }, { deviceId: userId }] },
+                query,
                 update,
                 { upsert: false }
             );
@@ -877,14 +888,19 @@ router.post('/user/onboarding', async (req, res) => {
             }
         }
 
-        const user = await AppUser.findByIdAndUpdate(
-            userId,
-            update,
-            { new: true }
-        );
+        // Handle both ObjectId and deviceId-based lookups
+        let user;
+        if (isValidObjectId(userId)) {
+            user = await AppUser.findByIdAndUpdate(userId, update, { new: true });
+        } else {
+            // For anonymous users, try to find by deviceId
+            user = await AppUser.findOneAndUpdate({ deviceId: userId }, update, { new: true });
+        }
 
         if (!user) {
-            return res.status(404).json({ error: 'User not found' });
+            // For anonymous users without an AppUser record, just return success
+            // (they may not have registered yet)
+            return res.json({ success: true, message: 'User not found, skipping update' });
         }
 
         res.json({ success: true, user });
@@ -922,14 +938,18 @@ router.post('/user/subscription', async (req, res) => {
             update.subscriptionEndDate = new Date(endDate);
         }
 
-        const user = await AppUser.findByIdAndUpdate(
-            userId,
-            update,
-            { new: true }
-        );
+        // Handle both ObjectId and deviceId-based lookups
+        let user;
+        if (isValidObjectId(userId)) {
+            user = await AppUser.findByIdAndUpdate(userId, update, { new: true });
+        } else {
+            // For anonymous users, try to find by deviceId
+            user = await AppUser.findOneAndUpdate({ deviceId: userId }, update, { new: true });
+        }
 
         if (!user) {
-            return res.status(404).json({ error: 'User not found' });
+            // For anonymous users without an AppUser record, just return success
+            return res.json({ success: true, message: 'User not found, skipping update' });
         }
 
         res.json({ success: true, user });
