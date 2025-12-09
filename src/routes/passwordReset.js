@@ -22,9 +22,14 @@ setInterval(() => {
  * POST /api/password-reset/request
  */
 router.post('/request', async (req, res) => {
+    console.log('📬 Password reset endpoint hit!');
+    console.log('📬 Request body:', req.body);
+    console.log('📬 Request origin:', req.headers.origin);
+    
     const { email } = req.body;
     
     if (!email) {
+        console.log('❌ No email provided in request');
         return res.status(400).json({ 
             success: false, 
             message: 'Email is required' 
@@ -33,6 +38,10 @@ router.post('/request', async (req, res) => {
     
     const normalizedEmail = email.toLowerCase().trim();
     console.log('🔐 Password reset requested for:', normalizedEmail);
+    
+    // Log email config status
+    console.log('📧 EMAIL_USER configured:', !!process.env.EMAIL_USER);
+    console.log('📧 EMAIL_PASSWORD configured:', !!process.env.EMAIL_PASSWORD);
     
     try {
         // Check if user exists

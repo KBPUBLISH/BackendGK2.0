@@ -25,28 +25,31 @@ app.use(helmet({
   contentSecurityPolicy: false, // Disable CSP for API
 }));
 
-// CORS - Restrict origins in production
-const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? [
-      'https://app.godlykids.com',
-      'https://portal.godlykids.com',
-      'https://www.godlykids.com',
-      'https://godlykids.com',
-      'https://godlykids.netlify.app',  // Netlify deployment
-      // DeSpia/native apps send requests with no origin, which are already allowed
-    ]
-  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'];
+// CORS - Allow all GodlyKids origins
+const allowedOrigins = [
+  'https://app.godlykids.com',
+  'https://portal.godlykids.com',
+  'https://www.godlykids.com',
+  'https://godlykids.com',
+  'https://godlykids.netlify.app',
+  'http://localhost:3000', 
+  'http://localhost:5173', 
+  'http://localhost:5174'
+];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
+    // Allow requests with no origin (mobile apps, Postman, curl, etc.)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+    // Allow any godlykids or netlify subdomain
+    if (allowedOrigins.includes(origin) || 
+        origin.includes('godlykids') || 
+        origin.includes('netlify.app')) {
       callback(null, true);
     } else {
-      console.warn(`CORS blocked origin: ${origin}`);
-      callback(null, true); // Still allow but log - change to callback(new Error('CORS')) to block
+      console.warn(`CORS origin not in whitelist: ${origin} - allowing anyway`);
+      callback(null, true); // Allow all for now
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

@@ -9,6 +9,10 @@ const getTransporter = () => {
     const emailUser = process.env.EMAIL_USER;
     const emailPassword = process.env.EMAIL_PASSWORD;
     
+    console.log('📧 Checking email config...');
+    console.log('📧 EMAIL_USER:', emailUser ? `${emailUser.substring(0, 5)}...` : 'NOT SET');
+    console.log('📧 EMAIL_PASSWORD:', emailPassword ? 'SET (hidden)' : 'NOT SET');
+    
     if (!emailUser || !emailPassword) {
         console.warn('⚠️ EMAIL_USER or EMAIL_PASSWORD not configured - emails disabled');
         return null;
