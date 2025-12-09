@@ -140,13 +140,23 @@ router.get('/purchase-status/:externalId', async (req, res) => {
         
         // Also check database
         try {
-            const user = await User.findOne({ 
-                $or: [
-                    { _id: externalId },
-                    { email: externalId },
-                    { deviceId: externalId }
-                ]
-            });
+            const mongoose = require('mongoose');
+            
+            // Build query - only use _id if it's a valid ObjectId
+            const isValidObjectId = mongoose.Types.ObjectId.isValid(externalId) && 
+                (new mongoose.Types.ObjectId(externalId)).toString() === externalId;
+            
+            const queryConditions = [
+                { email: externalId },
+                { deviceId: externalId }
+            ];
+            
+            // Only add _id condition if it's a valid ObjectId
+            if (isValidObjectId) {
+                queryConditions.unshift({ _id: externalId });
+            }
+            
+            const user = await User.findOne({ $or: queryConditions });
             
             if (user && user.isPremium) {
                 console.log(`✅ Found premium user in database`);

@@ -26,13 +26,14 @@ app.use(helmet({
 }));
 
 // CORS - Restrict origins in production
-const allowedOrigins = process.env.NODE_ENV === 'production' 
+const allowedOrigins = process.env.NODE_ENV === 'production'
   ? [
       'https://app.godlykids.com',
       'https://portal.godlykids.com',
       'https://www.godlykids.com',
       'https://godlykids.com',
-      // Add DeSpia/native app origins if needed
+      'https://godlykids.netlify.app',  // Netlify deployment
+      // DeSpia/native apps send requests with no origin, which are already allowed
     ]
   : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'];
 
