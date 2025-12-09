@@ -77,8 +77,7 @@ const bookQuizSchema = new mongoose.Schema({
     },
 });
 
-// Compound index for efficient lookups
-bookQuizSchema.index({ bookId: 1 });
+// Note: bookId already has index: true in schema definition
 
 // Helper to determine age group from age
 bookQuizSchema.statics.getAgeGroup = function(age) {

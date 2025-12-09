@@ -74,8 +74,7 @@ const musicSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for quick lookups by target
-musicSchema.index({ target: 1 });
+// Note: target already has unique: true which creates an index automatically
 
 module.exports = mongoose.model('Music', musicSchema);
 
