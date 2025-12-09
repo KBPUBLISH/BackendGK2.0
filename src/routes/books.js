@@ -40,7 +40,16 @@ router.get('/', async (req, res) => {
         
         // Filter parameters
         const filter = {};
-        if (req.query.status) filter.status = req.query.status;
+        // Default to published books only, unless explicitly requesting all statuses
+        // Portal can pass status=all to get everything, or status=draft for drafts only
+        if (req.query.status === 'all') {
+            // Don't filter by status - show all
+        } else if (req.query.status) {
+            filter.status = req.query.status;
+        } else {
+            // Default: only show published books in the main app
+            filter.status = 'published';
+        }
         if (req.query.categoryId) filter.categoryId = req.query.categoryId;
         
         // Get total count for pagination metadata
