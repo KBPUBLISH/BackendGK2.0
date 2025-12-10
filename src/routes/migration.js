@@ -48,9 +48,7 @@ router.post('/restore-subscription', async (req, res) => {
                 { email: email.toLowerCase().trim() },
                 { 
                     headers: { 
-                        'Authorization': `Bearer ${MIGRATION_API_KEY}`,
-                        'X-API-Key': MIGRATION_API_KEY,
-                        'prod_api_key': MIGRATION_API_KEY,  // Old backend might expect this header name
+                        'X-Migration-API-Key': MIGRATION_API_KEY,
                         'Content-Type': 'application/json'
                     },
                     timeout: 15000 // 15 second timeout
