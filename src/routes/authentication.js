@@ -1,7 +1,40 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 const User = require('../models/User');
+
+// Old backend configuration
+const OLD_BACKEND_URL = process.env.OLD_BACKEND_URL || 'https://api.godlykids.kbpublish.org';
+const MIGRATION_API_KEY = process.env.MIGRATION_API_KEY;
+
+// Check if email exists in old backend
+async function checkOldBackendEmail(email) {
+    try {
+        console.log('🔍 Checking old backend for email:', email);
+        const response = await axios.post(
+            `${OLD_BACKEND_URL}/payments/restore/subscription`,
+            { email: email.toLowerCase().trim() },
+            { 
+                headers: { 
+                    'X-Migration-API-Key': MIGRATION_API_KEY,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 10000
+            }
+        );
+        
+        console.log('📧 Old backend response:', response.data);
+        return {
+            exists: true,
+            hasSubscription: response.data?.subscription?.isActive || false,
+            subscriptionData: response.data?.subscription || null
+        };
+    } catch (error) {
+        console.log('📧 Email not found in old backend:', error.response?.status || error.message);
+        return { exists: false, hasSubscription: false };
+    }
+}
 
 // Sign-up endpoint (matches frontend expectation)
 router.post('/sign-up', async (req, res) => {
@@ -88,7 +121,20 @@ router.post('/sign-in', async (req, res) => {
         // Find user
         let user = await User.findOne({ email: normalizedEmail });
         if (!user) {
-            console.log(`❌ Sign-in failed: No user found with email ${normalizedEmail}`);
+            console.log(`❌ Sign-in: No user found with email ${normalizedEmail}, checking old backend...`);
+            
+            // Check if they exist in old backend
+            const oldBackendCheck = await checkOldBackendEmail(normalizedEmail);
+            
+            if (oldBackendCheck.exists) {
+                console.log(`🔄 Legacy account found for ${normalizedEmail}`);
+                return res.status(404).json({ 
+                    message: 'Account found in previous app',
+                    code: 'LEGACY_ACCOUNT',
+                    hasSubscription: oldBackendCheck.hasSubscription,
+                });
+            }
+            
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
@@ -173,6 +219,87 @@ router.post('/sign-in/skip', async (req, res) => {
     } catch (err) {
         console.error('Sign-in skip error:', err.message);
         res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Migrate legacy user - create account with new password for users from old app
+router.post('/migrate-legacy', async (req, res) => {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    if (password.length < 6) {
+        return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    try {
+        const normalizedEmail = email.toLowerCase().trim();
+        
+        // Check if already exists in new backend
+        let existingUser = await User.findOne({ email: normalizedEmail });
+        if (existingUser) {
+            return res.status(400).json({ message: 'Account already exists. Please sign in.' });
+        }
+
+        // Verify they exist in old backend
+        const oldBackendCheck = await checkOldBackendEmail(normalizedEmail);
+        if (!oldBackendCheck.exists) {
+            return res.status(400).json({ message: 'No legacy account found for this email.' });
+        }
+
+        // Create new account
+        const emailPrefix = normalizedEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+        const randomSuffix = Math.random().toString(36).substring(2, 8);
+        const username = `${emailPrefix}_${randomSuffix}`;
+        
+        const user = new User({
+            username,
+            email: normalizedEmail,
+            password: password,
+            isPremium: oldBackendCheck.hasSubscription,
+        });
+
+        await user.save();
+        console.log('✅ Migrated legacy user:', normalizedEmail, 'isPremium:', oldBackendCheck.hasSubscription);
+
+        const payload = {
+            user: {
+                id: user.id,
+            },
+        };
+
+        const accessToken = jwt.sign(
+            payload,
+            process.env.JWT_SECRET || 'secret',
+            { expiresIn: '1h' }
+        );
+
+        const refreshToken = jwt.sign(
+            payload,
+            process.env.JWT_SECRET || 'secret',
+            { expiresIn: '7d' }
+        );
+
+        res.status(201).json({ 
+            accessToken,
+            refreshToken,
+            user: { 
+                id: user.id, 
+                username: user.username, 
+                email: user.email,
+                isPremium: user.isPremium || false
+            },
+            migrated: true,
+            subscriptionRestored: oldBackendCheck.hasSubscription,
+            message: oldBackendCheck.hasSubscription 
+                ? 'Welcome back! Your account and subscription have been migrated! 🎉'
+                : 'Welcome back! Your account has been migrated.'
+        });
+    } catch (err) {
+        console.error('Migration error:', err.message);
+        res.status(500).json({ message: 'Server error during migration' });
     }
 });
 
