@@ -25,8 +25,8 @@ const ttsCacheSchema = new mongoose.Schema({
     },
     createdAt: {
         type: Date,
-        default: Date.now,
-        expires: 60 * 60 * 24 * 30 // Optional: Expire after 30 days
+        default: Date.now
+        // Permanent cache - no expiration
     }
 });
 
