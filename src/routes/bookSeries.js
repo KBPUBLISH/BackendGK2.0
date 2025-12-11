@@ -35,7 +35,7 @@ router.get('/', async (req, res) => {
             .populate('category', 'name')
             .populate({
                 path: 'books.book',
-                select: 'title coverImage author description minAge maxAge isMembersOnly status',
+                select: 'title coverImage files author description minAge maxAge isMembersOnly status',
             })
             .sort({ displayOrder: 1, createdAt: -1 });
         
@@ -59,7 +59,7 @@ router.get('/featured', async (req, res) => {
             .populate('category', 'name')
             .populate({
                 path: 'books.book',
-                select: 'title coverImage author description minAge maxAge isMembersOnly',
+                select: 'title coverImage files author description minAge maxAge isMembersOnly',
             })
             .sort({ displayOrder: 1 })
             .limit(10);
@@ -81,7 +81,7 @@ router.get('/:id', async (req, res) => {
             .populate('category', 'name')
             .populate({
                 path: 'books.book',
-                select: 'title coverImage author description minAge maxAge isMembersOnly status pages',
+                select: 'title coverImage files author description minAge maxAge isMembersOnly status pages',
                 populate: {
                     path: 'pages',
                     select: 'pageNumber',
@@ -157,7 +157,7 @@ router.post('/', async (req, res) => {
             .populate('category', 'name')
             .populate({
                 path: 'books.book',
-                select: 'title coverImage author',
+                select: 'title coverImage files author',
             });
         
         res.status(201).json(populatedSeries);
@@ -225,7 +225,7 @@ router.put('/:id', async (req, res) => {
             .populate('category', 'name')
             .populate({
                 path: 'books.book',
-                select: 'title coverImage author description minAge maxAge isMembersOnly',
+                select: 'title coverImage files author description minAge maxAge isMembersOnly',
             });
         
         res.json(populatedSeries);
@@ -293,7 +293,7 @@ router.post('/:id/add-book', async (req, res) => {
         const populatedSeries = await BookSeries.findById(series._id)
             .populate({
                 path: 'books.book',
-                select: 'title coverImage author',
+                select: 'title coverImage files author',
             });
         
         res.json(populatedSeries);
@@ -335,7 +335,7 @@ router.post('/:id/remove-book', async (req, res) => {
         const populatedSeries = await BookSeries.findById(series._id)
             .populate({
                 path: 'books.book',
-                select: 'title coverImage author',
+                select: 'title coverImage files author',
             });
         
         res.json(populatedSeries);
@@ -374,7 +374,7 @@ router.post('/:id/reorder', async (req, res) => {
         const populatedSeries = await BookSeries.findById(series._id)
             .populate({
                 path: 'books.book',
-                select: 'title coverImage author',
+                select: 'title coverImage files author',
             });
         
         res.json(populatedSeries);
