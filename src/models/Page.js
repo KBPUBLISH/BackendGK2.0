@@ -86,6 +86,13 @@ const pageSchema = new mongoose.Schema({
             filename: { type: String },
             uploadedAt: { type: Date, default: Date.now },
         },
+        // Multiple sound effects for this page (new)
+        // Backward compat: if present, the first item should be treated as the legacy soundEffect
+        soundEffects: [{
+            url: { type: String },
+            filename: { type: String },
+            uploadedAt: { type: Date, default: Date.now },
+        }],
     },
 
     // Legacy fields (for backward compatibility)

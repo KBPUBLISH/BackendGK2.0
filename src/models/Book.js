@@ -239,6 +239,12 @@ const bookSchema = new mongoose.Schema({
                     filename: { type: String },
                     uploadedAt: { type: Date, default: Date.now },
                 },
+                // Multiple sound effects for this page (new)
+                soundEffects: [{
+                    url: { type: String },
+                    filename: { type: String },
+                    uploadedAt: { type: Date, default: Date.now },
+                }],
             },
             
             // Legacy fields (for backward compatibility)

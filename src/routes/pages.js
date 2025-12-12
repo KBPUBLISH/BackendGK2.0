@@ -39,6 +39,19 @@ router.get('/book/:bookId', async (req, res) => {
             if (pageObj.isColoringPage === undefined) pageObj.isColoringPage = false;
             if (pageObj.coloringEndModalOnly === undefined) pageObj.coloringEndModalOnly = true;
 
+            // Backward compat for sound effects:
+            // if files.soundEffects exists, ensure files.soundEffect mirrors the first one
+            if (pageObj.files) {
+                if (Array.isArray(pageObj.files.soundEffects) && pageObj.files.soundEffects.length > 0) {
+                    if (!pageObj.files.soundEffect || !pageObj.files.soundEffect.url) {
+                        pageObj.files.soundEffect = pageObj.files.soundEffects[0];
+                    }
+                } else if (pageObj.files.soundEffect && pageObj.files.soundEffect.url) {
+                    // If only legacy exists, also provide array form
+                    pageObj.files.soundEffects = [pageObj.files.soundEffect];
+                }
+            }
+
             return pageObj;
         });
 
@@ -97,6 +110,18 @@ router.post('/', async (req, res) => {
                 url: req.body.audioUrl,
             },
         };
+    }
+
+    // Backward compat for sound effects on create:
+    // Accept either files.soundEffect or files.soundEffects; ensure both are set consistently.
+    if (pageData.files) {
+        if (Array.isArray(pageData.files.soundEffects) && pageData.files.soundEffects.length > 0) {
+            if (!pageData.files.soundEffect || !pageData.files.soundEffect.url) {
+                pageData.files.soundEffect = pageData.files.soundEffects[0];
+            }
+        } else if (pageData.files.soundEffect && pageData.files.soundEffect.url) {
+            pageData.files.soundEffects = [pageData.files.soundEffect];
+        }
     }
 
     // Legacy fields (for backward compatibility)
@@ -265,12 +290,31 @@ router.put('/:id', async (req, res) => {
             page.textBoxes = req.body.content.textBoxes; // Legacy
         }
 
-        // Handle files.soundEffect if provided
+        // Handle files.soundEffects (multi) if provided
+        if (req.body.files && req.body.files.soundEffects !== undefined) {
+            if (!page.files) {
+                page.files = { images: [], videos: [], audio: {} };
+            }
+            page.files.soundEffects = req.body.files.soundEffects;
+            // Keep legacy in sync
+            if (Array.isArray(page.files.soundEffects) && page.files.soundEffects.length > 0) {
+                page.files.soundEffect = page.files.soundEffects[0];
+            } else {
+                page.files.soundEffect = undefined;
+            }
+        }
+
+        // Handle files.soundEffect (legacy) if provided
         if (req.body.files && req.body.files.soundEffect !== undefined) {
             if (!page.files) {
                 page.files = { images: [], videos: [], audio: {} };
             }
             page.files.soundEffect = req.body.files.soundEffect;
+            if (page.files.soundEffect && page.files.soundEffect.url) {
+                page.files.soundEffects = [page.files.soundEffect];
+            } else {
+                page.files.soundEffects = [];
+            }
         }
 
         // Handle coloring page flags explicitly
