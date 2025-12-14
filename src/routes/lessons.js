@@ -328,6 +328,8 @@ router.get('/', async (req, res) => {
     try {
         const { status, published, scheduledDate } = req.query;
         
+        console.log('📚 GET /api/lessons called with:', { status, published, scheduledDate });
+        
         // Pagination parameters
         const page = parseInt(req.query.page) || 1;
         const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 per page
@@ -340,8 +342,10 @@ router.get('/', async (req, res) => {
         // Portal can pass status=all to get everything, or status=draft for drafts only
         if (status === 'all') {
             // Don't filter by status - show all (for portal)
+            console.log('📚 No status filter (status=all)');
         } else if (status) {
             query.status = status;
+            console.log('📚 Filtering by status:', status);
         } else if (published === 'true') {
             // If published=true, get published or scheduled lessons
             // Get all published lessons, or scheduled lessons (regardless of date)
@@ -349,16 +353,25 @@ router.get('/', async (req, res) => {
                 { status: 'published' },
                 { status: 'scheduled' }
             ];
+            console.log('📚 Filtering by published=true (status: published OR scheduled)');
         } else {
             // Default: only show published or scheduled lessons in the main app
             query.$or = [
                 { status: 'published' },
                 { status: 'scheduled' }
             ];
+            console.log('📚 Default filter (status: published OR scheduled)');
         }
+        
+        console.log('📚 Final query:', JSON.stringify(query));
         
         // Get total count for pagination metadata
         const total = await Lesson.countDocuments(query);
+        console.log('📚 Total lessons matching query:', total);
+        
+        // Also log total in DB for debugging
+        const allCount = await Lesson.countDocuments({});
+        console.log('📚 Total lessons in database (no filter):', allCount);
         
         const lessons = await Lesson.find(query)
             .sort({ order: 1, createdAt: -1 })
