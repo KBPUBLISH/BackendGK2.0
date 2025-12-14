@@ -169,8 +169,9 @@ router.get('/planner/day', async (req, res) => {
         console.log('   Lesson types in DB:', lessonTypes);
         console.log('   Lesson ageGroups in DB:', lessonAgeGroups);
 
-        // Always show 3 lessons per day (including weekends)
-        const needCount = 3;
+        // Weekdays: 3 lessons, Weekends: 1 Daily Verse only
+        const weekend = isWeekendUTC(String(dateKey));
+        const needCount = weekend ? 1 : 3;
 
         const excludedWeek = (lesson) => alreadyAssigned.has(String(lesson._id));
         const excludedSeen = (lesson) => seenSet.has(String(lesson._id));
