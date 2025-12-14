@@ -68,11 +68,15 @@ router.get('/planner/day', async (req, res) => {
             return res.status(400).json({ message: 'Invalid dateKey; expected YYYY-MM-DD' });
         }
 
-        // Return existing locked plan if present
+        // Check for force regenerate flag
+        const forceRegenerate = req.query.force === 'true';
+        
+        // Return existing locked plan if present (unless force regenerate)
         const existing = await LessonDayPlan.findOne({ profileId: String(profileId), dateKey: String(dateKey) })
             .populate('slots.lessonId')
             .lean();
-        if (existing) {
+        if (existing && !forceRegenerate) {
+            console.log('📅 PLANNER: Returning cached plan for', profileId, dateKey, 'slots:', existing.slots?.length);
             return res.json({
                 profileId: existing.profileId,
                 dateKey: existing.dateKey,
@@ -83,6 +87,12 @@ router.get('/planner/day', async (req, res) => {
                     lesson: s.lessonId,
                 })),
             });
+        }
+        
+        // If force regenerating, delete the old plan
+        if (forceRegenerate && existing) {
+            console.log('📅 PLANNER: Force regenerating plan for', profileId, dateKey);
+            await LessonDayPlan.deleteOne({ profileId: String(profileId), dateKey: String(dateKey) });
         }
 
         const weekKey = getWeekKeyMondayUTC(String(dateKey));
@@ -123,12 +133,22 @@ router.get('/planner/day', async (req, res) => {
         const seenSet = new Set(watched.map(w => String(w.lessonId)));
 
         // Candidate pools
+        console.log('📅 PLANNER DEBUG:');
+        console.log('   profileId:', profileId);
+        console.log('   dateKey:', dateKey);
+        console.log('   ageGroup:', kidAgeGroup);
+        console.log('   ageQuery:', JSON.stringify(ageQuery));
+        
         const dailyVerseCandidates = await Lesson.find({
             ...statusQuery,
             ...ageQuery,
             ...playableQuery,
             type: 'Daily Verse',
         }).lean();
+        console.log('   Daily Verse candidates:', dailyVerseCandidates.length);
+        if (dailyVerseCandidates.length > 0) {
+            console.log('   Sample DV:', dailyVerseCandidates[0].title, dailyVerseCandidates[0].ageGroup);
+        }
 
         const generalCandidates = await Lesson.find({
             ...statusQuery,
@@ -136,9 +156,21 @@ router.get('/planner/day', async (req, res) => {
             ...playableQuery,
             type: { $ne: 'Daily Verse' },
         }).lean();
+        console.log('   General candidates:', generalCandidates.length);
+        if (generalCandidates.length > 0) {
+            console.log('   Sample Gen:', generalCandidates[0].title, generalCandidates[0].ageGroup);
+        }
+        
+        // Also check total lessons without age filter
+        const allLessons = await Lesson.find({ ...statusQuery }).lean();
+        console.log('   Total published/scheduled lessons:', allLessons.length);
+        const lessonTypes = [...new Set(allLessons.map(l => l.type))];
+        const lessonAgeGroups = [...new Set(allLessons.map(l => l.ageGroup))];
+        console.log('   Lesson types in DB:', lessonTypes);
+        console.log('   Lesson ageGroups in DB:', lessonAgeGroups);
 
-        const weekend = isWeekendUTC(String(dateKey));
-        const needCount = weekend ? 1 : 3;
+        // Always show 3 lessons per day (including weekends)
+        const needCount = 3;
 
         const excludedWeek = (lesson) => alreadyAssigned.has(String(lesson._id));
         const excludedSeen = (lesson) => seenSet.has(String(lesson._id));
@@ -149,15 +181,20 @@ router.get('/planner/day', async (req, res) => {
         const dailyVersePick = pickRandom(dailyVerseUnseen.length ? dailyVerseUnseen : dailyVerseFallback, 1)[0] || null;
 
         const picked = [];
-        if (dailyVersePick) picked.push({ lesson: dailyVersePick, isDailyVerse: true });
+        if (dailyVersePick) {
+            picked.push({ lesson: dailyVersePick, isDailyVerse: true });
+        }
 
-        if (!weekend) {
-            const remainingNeed = needCount - picked.length;
+        // Fill remaining slots with general lessons
+        const remainingNeed = needCount - picked.length;
+        if (remainingNeed > 0) {
             const generalUnseen = generalCandidates.filter(l => !excludedWeek(l) && !excludedSeen(l));
             const generalFallback = generalCandidates.filter(l => !excludedWeek(l));
             const generalPick = pickRandom(generalUnseen.length ? generalUnseen : generalFallback, remainingNeed);
             generalPick.forEach(l => picked.push({ lesson: l, isDailyVerse: false }));
         }
+        
+        console.log('   Picked lessons:', picked.length, picked.map(p => p.lesson?.title || 'unknown'));
 
         // If we still don't have enough (extreme fallback), allow repeats from week but still unique within day.
         const pickedIds = new Set(picked.map(p => String(p.lesson._id)));
