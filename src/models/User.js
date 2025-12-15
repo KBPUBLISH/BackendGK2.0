@@ -52,6 +52,14 @@ const UserSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // Influencer referral tracking
+  referredBy: {
+    influencerCode: { type: String, default: null },
+    influencerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Influencer', default: null },
+    clickedAt: { type: Date, default: null },
+    signedUpAt: { type: Date, default: null },
+    convertedAt: { type: Date, default: null },
+  },
 }, {
   timestamps: true, // Adds createdAt and updatedAt automatically
 });
