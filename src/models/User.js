@@ -60,6 +60,21 @@ const UserSchema = new mongoose.Schema({
     signedUpAt: { type: Date, default: null },
     convertedAt: { type: Date, default: null },
   },
+  // User-to-user referral system
+  referralCode: {
+    type: String,
+    unique: true,
+    sparse: true, // Allows null values while still being unique
+  },
+  referralStats: {
+    totalReferrals: { type: Number, default: 0 },
+    coinsEarned: { type: Number, default: 0 },
+  },
+  // Push notification token (OneSignal player ID)
+  pushToken: {
+    type: String,
+    default: null,
+  },
 }, {
   timestamps: true, // Adds createdAt and updatedAt automatically
 });
