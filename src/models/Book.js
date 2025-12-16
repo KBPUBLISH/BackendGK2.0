@@ -75,54 +75,6 @@ const bookSchema = new mongoose.Schema({
         default: 0,
     },
     
-    // Analytics counters
-    viewCount: {
-        type: Number,
-        default: 0,
-    },
-    quizStartCount: {
-        type: Number,
-        default: 0,
-    },
-    quizCompletionCount: {
-        type: Number,
-        default: 0,
-    },
-    coloringSessionsCount: {
-        type: Number,
-        default: 0,
-    },
-    gameUnlockCount: {
-        type: Number,
-        default: 0,
-    },
-    gameOpenCount: {
-        type: Number,
-        default: 0,
-    },
-    
-    // Completion rate tracking
-    totalPagesViewed: {
-        type: Number,
-        default: 0,
-    },
-    totalReadSessions: {
-        type: Number,
-        default: 0,
-    },
-    // Average completion rate (0-100) = (totalPagesViewed / (totalReadSessions * totalPages)) * 100
-    // Updated periodically or on read session end
-    averageCompletionRate: {
-        type: Number,
-        default: 0,
-    },
-    
-    // Whether this book has a quiz
-    hasQuiz: {
-        type: Boolean,
-        default: false,
-    },
-    
     // Organized file structure per book
     files: {
         type: {
@@ -239,12 +191,6 @@ const bookSchema = new mongoose.Schema({
                     filename: { type: String },
                     uploadedAt: { type: Date, default: Date.now },
                 },
-                // Multiple sound effects for this page (new)
-                soundEffects: [{
-                    url: { type: String },
-                    filename: { type: String },
-                    uploadedAt: { type: Date, default: Date.now },
-                }],
             },
             
             // Legacy fields (for backward compatibility)

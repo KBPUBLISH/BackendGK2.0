@@ -16,67 +16,6 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  isPremium: {
-    type: Boolean,
-    default: false,
-  },
-  subscriptionStatus: {
-    type: String,
-    enum: ['free', 'trial', 'active', 'cancelled', 'expired'],
-    default: 'free',
-  },
-  // Subscription dates (timestamps in ms)
-  subscriptionExpiryDate: {
-    type: Number,
-    default: null,
-  },
-  subscriptionStartDate: {
-    type: Number,
-    default: null,
-  },
-  // Migration tracking
-  migratedFromOldApp: {
-    type: Boolean,
-    default: false,
-  },
-  oldAppUserId: {
-    type: String,
-    default: null,
-  },
-  // Trial tracking
-  isTrialUsed: {
-    type: Boolean,
-    default: false,
-  },
-  isTrialActive: {
-    type: Boolean,
-    default: false,
-  },
-  // Influencer referral tracking
-  referredBy: {
-    influencerCode: { type: String, default: null },
-    influencerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Influencer', default: null },
-    clickedAt: { type: Date, default: null },
-    signedUpAt: { type: Date, default: null },
-    convertedAt: { type: Date, default: null },
-  },
-  // User-to-user referral system
-  referralCode: {
-    type: String,
-    unique: true,
-    sparse: true, // Allows null values while still being unique
-  },
-  referralStats: {
-    totalReferrals: { type: Number, default: 0 },
-    coinsEarned: { type: Number, default: 0 },
-  },
-  // Push notification token (OneSignal player ID)
-  pushToken: {
-    type: String,
-    default: null,
-  },
-}, {
-  timestamps: true, // Adds createdAt and updatedAt automatically
 });
 
 UserSchema.pre('save', async function () {

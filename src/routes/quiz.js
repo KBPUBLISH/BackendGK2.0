@@ -5,77 +5,50 @@ const BookQuiz = require('../models/BookQuiz');
 const Book = require('../models/Book');
 const Page = require('../models/Page');
 
-// Helper function to get age-appropriate prompt with spiritual focus
+// Helper function to get age-appropriate prompt
 const getAgeAppropriatePrompt = (age, ageGroup) => {
-    const spiritualFocus = `
-IMPORTANT - SPIRITUAL FOCUS:
-This is a Christian children's app. Questions should help kids connect with Biblical values and deeper spiritual meaning.
-Focus on:
-- What the story teaches about God, Jesus, faith, or prayer
-- Character virtues like kindness, forgiveness, courage, honesty, and love
-- How the characters showed faith or trust in God
-- What lessons about being a good Christian the story teaches
-- How kids can apply these lessons in their own lives
-
-DO NOT ask trivial recall questions like "What sound did they hear?" or "What color was the hat?"
-Instead, ask questions that help kids think about the MEANING and LESSONS of the story.`;
-
     switch (ageGroup) {
         case '3-5':
             return `You are creating a quiz for a child aged 3-5 years old.
-${spiritualFocus}
-
-Rules for this age group (ages 3-5):
+Rules for this age group:
 - Use VERY simple words (1-2 syllables when possible)
-- Focus on basic emotions, kindness, and simple faith concepts
+- Questions should be about basic things: colors, animals, characters, simple actions
 - Options should be short (2-4 words maximum)
 - Make questions fun and encouraging
-- Ask about how characters were kind, brave, or loving
-- Ask about how characters trusted God or prayed
-- Example: "How did the character show kindness?" with options like "Shared food", "Was mean", "Ran away", "Hid"
-- Example: "What did the story teach us about?" with options like "Being brave", "Being selfish", "Being lazy", "Being scared"`;
+- Focus on "what" and "who" questions, not "why" or "how"
+- Include picture-friendly concepts (things kids can visualize)
+- Example: "What color was the bunny?" with options like "White", "Blue", "Green", "Red"`;
 
         case '6-8':
             return `You are creating a quiz for a child aged 6-8 years old.
-${spiritualFocus}
-
-Rules for this age group (ages 6-8):
+Rules for this age group:
 - Use simple but slightly more complex vocabulary
-- Questions should explore WHY characters made good or bad choices
-- Ask about Biblical virtues: faith, hope, love, patience, kindness
+- Questions can include basic comprehension and sequence of events
 - Options can be short sentences (5-8 words)
-- Include questions about how to apply lessons to real life
-- Example: "Why was it important for the character to forgive?" 
-- Example: "What does this story teach us about trusting God?"
-- Example: "How could YOU be kind like the main character?"`;
+- Include some "why" questions with simple reasoning
+- Test memory of story details and character names
+- Example: "Why did the farmer go to the field?" with options about the story`;
 
         case '9-12':
             return `You are creating a quiz for a child aged 9-12 years old.
-${spiritualFocus}
-
-Rules for this age group (ages 9-12):
+Rules for this age group:
 - Use grade-appropriate vocabulary
-- Questions should test deeper spiritual understanding and themes
-- Ask about character development and spiritual growth
-- Include questions connecting the story to Biblical principles
-- Ask how the story relates to their own faith journey
+- Questions should test deeper comprehension and themes
+- Include inference questions (what might happen next, why characters acted a certain way)
 - Options can be full sentences
-- Include questions about moral dilemmas and faith decisions
-- Example: "What does this story teach us about God's love and forgiveness?"
-- Example: "How did the character's faith help them overcome their challenge?"
-- Example: "What Bible verse or teaching does this story remind you of?"`;
+- Include questions about lessons learned and moral of the story
+- Test understanding of cause and effect
+- Example: "What lesson did the main character learn about friendship?"`;
 
         default:
-            return `You are creating a quiz for a child. 
-${spiritualFocus}
-Use age-appropriate language and focus on spiritual lessons.`;
+            return `You are creating a quiz for a child. Use age-appropriate language and concepts.`;
     }
 };
 
 // POST /api/quiz/generate - Generate a quiz for a book using AI
 router.post('/generate', async (req, res) => {
     try {
-        const { bookId, age, attemptNumber = 1 } = req.body;
+        const { bookId, age } = req.body;
 
         if (!bookId) {
             return res.status(400).json({ message: 'bookId is required' });
@@ -84,35 +57,23 @@ router.post('/generate', async (req, res) => {
         // Determine age group
         const userAge = parseInt(age) || 6; // Default to 6 if not provided
         const ageGroup = BookQuiz.getAgeGroup(userAge);
-        const isSecondAttempt = attemptNumber === 2;
         
-        console.log(`📚 Quiz request for book ${bookId}, age ${userAge} (group: ${ageGroup}), attempt: ${attemptNumber}`);
+        console.log(`📚 Quiz request for book ${bookId}, age ${userAge} (group: ${ageGroup})`);
 
         // Check if quiz already exists for this book
         let existingQuiz = await BookQuiz.findOne({ bookId });
         
-        // For second attempt, we want DIFFERENT questions
-        // Check if we have questions for this attempt number
-        const cacheKey = isSecondAttempt ? `${ageGroup}_attempt2` : ageGroup;
-        
-        // Check if we already have questions for this age group and attempt
-        if (existingQuiz) {
-            const cachedQuestions = isSecondAttempt 
-                ? existingQuiz.getQuestionsForAge(userAge, 2) // Get attempt 2 questions
-                : existingQuiz.getQuestionsForAge(userAge, 1); // Get attempt 1 questions
-            
-            if (cachedQuestions && cachedQuestions.length > 0) {
-                console.log(`📚 Quiz already exists for book ${bookId}, age group ${ageGroup}, attempt ${attemptNumber}`);
-                return res.json({
-                    quiz: {
-                        ...existingQuiz.toObject(),
-                        questions: cachedQuestions,
-                        ageGroup,
-                        attemptNumber
-                    },
-                    cached: true
-                });
-            }
+        // Check if we already have questions for this age group
+        if (existingQuiz && existingQuiz.hasQuestionsForAge(userAge)) {
+            console.log(`📚 Quiz already exists for book ${bookId}, age group ${ageGroup}`);
+            return res.json({
+                quiz: {
+                    ...existingQuiz.toObject(),
+                    questions: existingQuiz.getQuestionsForAge(userAge),
+                    ageGroup
+                },
+                cached: true
+            });
         }
 
         // Get book details
@@ -155,12 +116,7 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ message: 'No story content found in book pages' });
         }
 
-        // Use book's target age if available, otherwise use user's age
-        const targetAge = book.minAge || userAge;
-        const targetAgeGroup = BookQuiz.getAgeGroup(targetAge);
-        
-        console.log('📖 Generating quiz for book:', book.title);
-        console.log('📚 Book target age:', book.minAge || 'not set', '| User age:', userAge, '| Using age group:', targetAgeGroup);
+        console.log('📖 Generating quiz for book:', book.title, 'Age group:', ageGroup);
         console.log('📝 Story content length:', storyContent.length, 'characters');
 
         // Use OpenAI to generate quiz questions
@@ -169,12 +125,7 @@ router.post('/generate', async (req, res) => {
             return res.status(500).json({ message: 'OpenAI API key not configured' });
         }
 
-        const agePrompt = getAgeAppropriatePrompt(targetAge, targetAgeGroup);
-        
-        // Add instruction for second attempt to generate DIFFERENT questions
-        const attemptInstruction = isSecondAttempt 
-            ? `\n\nIMPORTANT: This is the SECOND ATTEMPT for this quiz. Create COMPLETELY DIFFERENT questions from a typical first attempt. Focus on different aspects of the story, different character moments, and different spiritual lessons. Make these questions explore NEW angles and perspectives.`
-            : '';
+        const agePrompt = getAgeAppropriatePrompt(userAge, ageGroup);
 
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
@@ -185,31 +136,26 @@ router.post('/generate', async (req, res) => {
                         role: 'system',
                         content: `${agePrompt}
 
-Create exactly 6 multiple-choice questions based on the story content provided.${attemptInstruction}
+Create exactly 6 multiple-choice questions based on the story content provided.
 
 General Rules:
 1. Create exactly 6 multiple-choice questions
 2. Each question should have exactly 4 options (A, B, C, D)
 3. Only ONE option should be correct per question
-4. Questions should focus on SPIRITUAL LESSONS and DEEPER MEANING
-5. Questions should help kids grow in faith and understand Biblical values
-6. Include questions about:
-   - What the story teaches about God, faith, or prayer
-   - How characters showed virtues like kindness, forgiveness, bravery, honesty
-   - What lessons kids can apply to their own lives
-   - How characters trusted God or made faithful choices
-7. AVOID trivial recall questions about minor details
-8. Make the quiz fun and encouraging
+4. Questions should test comprehension, not trick the child
+5. Questions should cover different parts of the story
+6. Include questions about characters, events, and feelings
+7. Make the quiz fun and encouraging
 
 Return your response as a valid JSON array with this exact structure:
 [
   {
-    "question": "What important lesson does this story teach about kindness?",
+    "question": "What did the main character do first?",
     "options": [
-      { "text": "Kindness helps others feel loved", "isCorrect": true },
-      { "text": "Kindness is not important", "isCorrect": false },
-      { "text": "Only be kind to friends", "isCorrect": false },
-      { "text": "Being kind is too hard", "isCorrect": false }
+      { "text": "Went to school", "isCorrect": false },
+      { "text": "Ate breakfast", "isCorrect": true },
+      { "text": "Played outside", "isCorrect": false },
+      { "text": "Read a book", "isCorrect": false }
     ]
   }
 ]
@@ -218,10 +164,10 @@ Return ONLY the JSON array, no explanations or markdown.`
                     },
                     {
                         role: 'user',
-                        content: `Create a 6-question spiritual quiz for a ${targetAge}-year-old child about this Christian story titled "${book.title}".${isSecondAttempt ? ' This is attempt #2 - create DIFFERENT questions than would be in attempt #1.' : ''} Focus on faith, Biblical values, and life lessons:\n\n${storyContent.substring(0, 4000)}`
+                        content: `Create a 6-question quiz for a ${userAge}-year-old child about this story titled "${book.title}":\n\n${storyContent.substring(0, 4000)}`
                     }
                 ],
-                temperature: isSecondAttempt ? 0.9 : 0.7, // Higher temperature for more variety on second attempt
+                temperature: 0.7,
                 max_tokens: 2000
             },
             {
@@ -258,18 +204,17 @@ Return ONLY the JSON array, no explanations or markdown.`
             });
         }
         
-        // Add questions for this age group and attempt number
-        existingQuiz.setQuestionsForAge(userAge, questions, attemptNumber);
+        // Add questions for this age group
+        existingQuiz.setQuestionsForAge(userAge, questions);
         await existingQuiz.save();
 
-        console.log(`✅ Quiz generated successfully for book: ${book.title}, age group: ${ageGroup}, attempt: ${attemptNumber}`);
+        console.log(`✅ Quiz generated successfully for book: ${book.title}, age group: ${ageGroup}`);
 
         res.json({
             quiz: {
                 ...existingQuiz.toObject(),
                 questions, // Return the questions for this age group
-                ageGroup,
-                attemptNumber
+                ageGroup
             },
             cached: false
         });
@@ -340,14 +285,10 @@ router.post('/generate-first', async (req, res) => {
             return res.status(500).json({ message: 'OpenAI API key not configured' });
         }
 
-        // Use book's target age if available
-        const targetAge = book.minAge || userAge;
-        const targetAgeGroup = BookQuiz.getAgeGroup(targetAge);
-
         // Generate just ONE question quickly
-        console.log(`⚡ Quick-generating first question for book: ${book.title} (target age: ${targetAge})`);
+        console.log(`⚡ Quick-generating first question for book: ${book.title}`);
         
-        const agePrompt = getAgeAppropriatePrompt(targetAge, targetAgeGroup);
+        const agePrompt = getAgeAppropriatePrompt(userAge, ageGroup);
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
             {
@@ -357,29 +298,28 @@ router.post('/generate-first', async (req, res) => {
                         role: 'system',
                         content: `${agePrompt}
 
-Create exactly 1 multiple-choice question based on the story. This should be a warm-up question that introduces the MAIN THEME or SPIRITUAL LESSON of the story.
+Create exactly 1 multiple-choice question based on the story. This should be an easy warm-up question about the beginning of the story.
 
 Rules:
 1. Create exactly 1 question
 2. 4 options (A, B, C, D), only ONE correct
-3. Focus on the story's main message, lesson, or a character's virtue
-4. Keep it fun, encouraging, and spiritually meaningful
-5. AVOID trivial recall questions - focus on meaning
+3. Make it about something from the start of the story
+4. Keep it fun and encouraging
 
 Return ONLY a JSON object (not array):
 {
-  "question": "What is this story mainly about?",
+  "question": "What happened at the beginning?",
   "options": [
-    { "text": "Learning to trust God", "isCorrect": true },
-    { "text": "Finding treasure", "isCorrect": false },
-    { "text": "Playing games", "isCorrect": false },
-    { "text": "Going to school", "isCorrect": false }
+    { "text": "Option A", "isCorrect": false },
+    { "text": "Option B", "isCorrect": true },
+    { "text": "Option C", "isCorrect": false },
+    { "text": "Option D", "isCorrect": false }
   ]
 }`
                     },
                     {
                         role: 'user',
-                        content: `Create 1 spiritual warm-up question for a ${targetAge}-year-old about this Christian story: "${book.title}". Focus on the main faith lesson or virtue:\n\nStory: ${storyContent.substring(0, 2000)}`
+                        content: `Create 1 warm-up question for a ${userAge}-year-old about: "${book.title}"\n\nStory: ${storyContent.substring(0, 2000)}`
                     }
                 ],
                 temperature: 0.7,
@@ -477,14 +417,10 @@ router.post('/generate-remaining', async (req, res) => {
             return res.status(500).json({ message: 'OpenAI API key not configured' });
         }
 
-        // Use book's target age if available
-        const targetAge = book.minAge || userAge;
-        const targetAgeGroup = BookQuiz.getAgeGroup(targetAge);
-
         // Generate remaining 5 questions
-        console.log(`📝 Generating remaining questions for: ${book.title} (target age: ${targetAge})`);
+        console.log(`📝 Generating remaining questions for: ${book.title}`);
         
-        const agePrompt = getAgeAppropriatePrompt(targetAge, targetAgeGroup);
+        const agePrompt = getAgeAppropriatePrompt(userAge, ageGroup);
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
             {
@@ -499,14 +435,9 @@ Create exactly 5 more multiple-choice questions. The first question was already 
 Rules:
 1. Create exactly 5 NEW questions (different from the first one)
 2. Each has 4 options (A, B, C, D), only ONE correct
-3. Focus on SPIRITUAL LESSONS and DEEPER MEANING throughout the story
-4. Include variety:
-   - Questions about character virtues (kindness, courage, faith, honesty)
-   - Questions about what the story teaches about God or prayer
-   - Questions about how kids can apply these lessons
-   - Questions about how characters grew or changed
-5. AVOID trivial recall questions about minor details
-6. Make it fun and faith-building!
+3. Cover different parts of the story (middle and end)
+4. Include variety: characters, events, feelings, lessons
+5. Make it fun!
 
 Return ONLY a JSON array:
 [
@@ -516,7 +447,7 @@ Return ONLY a JSON array:
                     },
                     {
                         role: 'user',
-                        content: `Create 5 more spiritual questions for a ${targetAge}-year-old about this Christian story: "${book.title}". Focus on faith lessons and virtues:\n\nStory: ${storyContent.substring(0, 4000)}`
+                        content: `Create 5 more questions for a ${userAge}-year-old about: "${book.title}"\n\nStory: ${storyContent.substring(0, 4000)}`
                     }
                 ],
                 temperature: 0.7,

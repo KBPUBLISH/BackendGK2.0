@@ -15,7 +15,6 @@ const lessonSchema = new mongoose.Schema({
         type: String,
         enum: [
             'Bible Study',
-            'Daily Verse',
             'Science', 
             'Math', 
             'History', 

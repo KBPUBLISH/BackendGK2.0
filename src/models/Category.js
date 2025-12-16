@@ -4,17 +4,8 @@ const categorySchema = new mongoose.Schema({
     name: {
         type: String,
         required: true,
+        unique: true,
         trim: true,
-    },
-    type: {
-        type: String,
-        enum: ['book', 'audio'],
-        required: true,
-        default: 'book',
-    },
-    showOnExplore: {
-        type: Boolean,
-        default: false,
     },
     description: {
         type: String,
@@ -36,14 +27,9 @@ const categorySchema = new mongoose.Schema({
     },
 });
 
-// Compound unique index: name must be unique per type
-categorySchema.index({ name: 1, type: 1 }, { unique: true });
-
 categorySchema.pre('save', function(next) {
     this.updatedAt = Date.now();
-    if (typeof next === 'function') {
     next();
-    }
 });
 
 module.exports = mongoose.model('Category', categorySchema);

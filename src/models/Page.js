@@ -86,13 +86,6 @@ const pageSchema = new mongoose.Schema({
             filename: { type: String },
             uploadedAt: { type: Date, default: Date.now },
         },
-        // Multiple sound effects for this page (new)
-        // Backward compat: if present, the first item should be treated as the legacy soundEffect
-        soundEffects: [{
-            url: { type: String },
-            filename: { type: String },
-            uploadedAt: { type: Date, default: Date.now },
-        }],
     },
 
     // Legacy fields (for backward compatibility)
@@ -101,11 +94,7 @@ const pageSchema = new mongoose.Schema({
     backgroundUrl: { type: String },
     backgroundType: { type: String, enum: ['image', 'video'] },
     scrollUrl: { type: String },
-    scrollHeight: { type: Number }, // Legacy single height
-    
-    // Scroll height settings (percentages for mid and max states)
-    scrollMidHeight: { type: Number, default: 30 }, // Mid scroll height %
-    scrollMaxHeight: { type: Number, default: 60 }, // Max scroll height %
+    scrollHeight: { type: Number },
 
     createdAt: {
         type: Date,
