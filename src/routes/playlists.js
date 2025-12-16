@@ -143,6 +143,8 @@ router.post('/', async (req, res) => {
             minAge: req.body.minAge,
             level: req.body.level || '',
             isMembersOnly: req.body.isMembersOnly || false,
+            isFeatured: req.body.isFeatured || false,
+            featuredOrder: req.body.featuredOrder || 0,
         });
         
         console.log('📝 Creating playlist with categories:', req.body.categories);
@@ -198,6 +200,14 @@ router.put('/:id', async (req, res) => {
         if (req.body.minAge !== undefined) playlist.minAge = req.body.minAge;
         if (req.body.level !== undefined) playlist.level = req.body.level;
         if (req.body.isMembersOnly !== undefined) playlist.isMembersOnly = req.body.isMembersOnly;
+        if (req.body.isFeatured !== undefined) {
+            playlist.isFeatured = req.body.isFeatured;
+            console.log('⭐ Setting isFeatured:', req.body.isFeatured);
+        }
+        if (req.body.featuredOrder !== undefined) {
+            playlist.featuredOrder = req.body.featuredOrder;
+            console.log('📍 Setting featuredOrder:', req.body.featuredOrder);
+        }
         if (req.body.items !== undefined) {
             // For items, ensure all required fields are present
             playlist.items = req.body.items.map((item, index) => {
