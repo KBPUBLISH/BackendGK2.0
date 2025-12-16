@@ -87,7 +87,7 @@ router.post('/track', async (req, res) => {
 
         // Update aggregate counters on content models
         if (targetId) {
-            await updateContentCounters(eventType, targetType, targetId);
+            await updateContentCounters(eventType, targetType, targetId, metadata);
         }
 
         // Update user stats if applicable
@@ -103,7 +103,7 @@ router.post('/track', async (req, res) => {
 });
 
 // Helper to update content counters
-async function updateContentCounters(eventType, targetType, targetId) {
+async function updateContentCounters(eventType, targetType, targetId, metadata) {
     try {
         const updateOps = {};
         
