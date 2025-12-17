@@ -95,6 +95,17 @@ const pageSchema = new mongoose.Schema({
     backgroundType: { type: String, enum: ['image', 'video'] },
     scrollUrl: { type: String },
     scrollHeight: { type: Number },
+    // Legacy textBoxes at root level (portal sends here, new schema uses content.textBoxes)
+    textBoxes: [{
+        text: String,
+        x: Number,
+        y: Number,
+        width: { type: Number, default: 30 },
+        alignment: { type: String, enum: ['left', 'center', 'right'], default: 'left' },
+        fontFamily: { type: String, default: 'Comic Sans MS' },
+        fontSize: { type: Number, default: 24 },
+        color: { type: String, default: '#4a3b2a' },
+    }],
 
     createdAt: {
         type: Date,
