@@ -162,11 +162,29 @@ router.post('/generate', async (req, res) => {
         const cached = await TTSCache.findOne({ textHash, voiceId });
 
         if (cached) {
-            console.log('TTS Cache Hit');
-            return res.json({
-                audioUrl: cached.audioUrl,
-                alignment: cached.alignmentData
-            });
+            // Check if cached URL is a local path but GCS is now configured
+            // If so, we need to regenerate with GCS
+            const isLocalPath = cached.audioUrl && cached.audioUrl.startsWith('/uploads/');
+            const gcsConfigured = bucket && process.env.GCS_BUCKET_NAME;
+            
+            if (isLocalPath && gcsConfigured) {
+                console.log('TTS Cache Hit - but URL is local path and GCS is configured, regenerating...');
+                // Delete old cache entry so we regenerate with GCS
+                await TTSCache.deleteOne({ _id: cached._id });
+                // Fall through to generate new audio
+            } else if (isLocalPath) {
+                console.log('TTS Cache Hit - local path (GCS not configured)');
+                return res.json({
+                    audioUrl: cached.audioUrl,
+                    alignment: cached.alignmentData
+                });
+            } else {
+                console.log('TTS Cache Hit - GCS URL');
+                return res.json({
+                    audioUrl: cached.audioUrl,
+                    alignment: cached.alignmentData
+                });
+            }
         }
 
         console.log('TTS Cache Miss - Generating Audio with Timestamps');
@@ -182,14 +200,27 @@ router.post('/generate', async (req, res) => {
         // Use multilingual model for non-English languages
         const isMultilingual = languageCode && languageCode !== 'en';
         const modelId = isMultilingual ? "eleven_multilingual_v2" : "eleven_v3";
+        
+        // Strip emotional cues from text before sending to ElevenLabs
+        // These are bracketed expressions like [happy], [Niños riendo], [long pause], etc.
+        // The multilingual model doesn't handle them, and they can interfere with TTS quality
+        let processedText = text;
+        const bracketRegex = /\[[^\]]+\]/g;
+        const brackets = text.match(bracketRegex);
+        if (brackets && brackets.length > 0) {
+            processedText = text.replace(bracketRegex, '').replace(/\s+/g, ' ').trim();
+            console.log(`🔧 Stripped ${brackets.length} bracketed expression(s): ${brackets.join(', ')}`);
+        }
+        
         console.log(`🎤 Generating TTS with ElevenLabs model: ${modelId} (language: ${languageCode || 'en'})`);
+        console.log(`📝 Text length: ${processedText.length} chars`);
 
         try {
             // Use the /with-timestamps endpoint to get word-level timing
             const response = await axios.post(
                 `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
                 {
-                    text,
+                    text: processedText, // Use processed text with brackets stripped
                     model_id: modelId,
                     voice_settings: {
                         stability: 0.5,
@@ -214,8 +245,8 @@ router.post('/generate', async (req, res) => {
             // Convert base64 audio to buffer
             audioBuffer = Buffer.from(audio_base64, 'base64');
             
-            // Process character-level alignment into word-level timing
-            alignmentData = processAlignmentToWords(text, alignment);
+            // Process character-level alignment into word-level timing (use processed text for accurate alignment)
+            alignmentData = processAlignmentToWords(processedText, alignment);
             
             console.log('✅ Got alignment data:', {
                 characters: alignment?.characters?.length || 0,
@@ -231,7 +262,7 @@ router.post('/generate', async (req, res) => {
                 const fallbackResponse = await axios.post(
                     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
                     {
-                        text,
+                        text: processedText, // Use processed text with brackets stripped
                         model_id: modelId,
                         voice_settings: {
                             stability: 0.5,
@@ -251,8 +282,8 @@ router.post('/generate', async (req, res) => {
                 );
                 audioBuffer = fallbackResponse.data;
                 
-                // Generate estimated word timing as fallback
-                const words = text.split(/\s+/).filter(w => w.length > 0);
+                // Generate estimated word timing as fallback (use processed text)
+                const words = processedText.split(/\s+/).filter(w => w.length > 0);
                 const estimatedDurationPerWord = 0.4;
                 alignmentData = {
                     words: words.map((word, index) => ({
