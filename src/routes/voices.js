@@ -27,7 +27,32 @@ router.get('/enabled', async (req, res) => {
         }
 
         const voices = await Voice.find({ enabled: true }).sort({ displayOrder: 1, name: 1 });
-        console.log(`📢 Returning ${voices.length} enabled voices`);
+        
+        // If no voices are in the database, fallback to fetching from ElevenLabs directly
+        if (voices.length === 0) {
+            console.log('⚠️ No voices in database, falling back to ElevenLabs API...');
+            const apiKey = process.env.ELEVENLABS_API_KEY;
+            if (apiKey) {
+                try {
+                    const response = await axios.get('https://api.elevenlabs.io/v1/voices', {
+                        headers: { 'xi-api-key': apiKey }
+                    });
+                    const elevenLabsVoices = response.data.voices.map(v => ({
+                        voiceId: v.voice_id,
+                        name: v.name,
+                        category: v.category || 'premade',
+                        previewUrl: v.preview_url,
+                        enabled: true
+                    }));
+                    console.log(`📢 Returning ${elevenLabsVoices.length} voices from ElevenLabs (database empty)`);
+                    return res.json(elevenLabsVoices);
+                } catch (elevenLabsError) {
+                    console.error('ElevenLabs fallback failed:', elevenLabsError.message);
+                }
+            }
+        }
+        
+        console.log(`📢 Returning ${voices.length} enabled voices from database`);
         res.json(voices);
     } catch (error) {
         console.error('Get Enabled Voices Error:', error);
