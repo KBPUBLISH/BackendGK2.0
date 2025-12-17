@@ -639,6 +639,19 @@ router.delete('/clear-cache', async (req, res) => {
             });
         }
         
+        // Clear only entries with local paths (for migration to GCS)
+        if (req.body.clearLocalPaths === true) {
+            const result = await TTSCache.deleteMany({ 
+                audioUrl: { $regex: '^/uploads/' } 
+            });
+            console.log(`🗑️ Cleared ${result.deletedCount} cache entries with local paths`);
+            return res.json({ 
+                success: true, 
+                message: `Cleared ${result.deletedCount} cache entries with local /uploads/ paths`,
+                deletedCount: result.deletedCount 
+            });
+        }
+        
         if (textHash && voiceId) {
             // Clear specific cache entry
             const result = await TTSCache.deleteOne({ textHash, voiceId });
