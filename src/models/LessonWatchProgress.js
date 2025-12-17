@@ -42,3 +42,4 @@ lessonWatchProgressSchema.index({ profileId: 1, lastSeenAt: -1 });
 module.exports = mongoose.model('LessonWatchProgress', lessonWatchProgressSchema);
 
 
+

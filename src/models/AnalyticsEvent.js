@@ -96,3 +96,4 @@ analyticsEventSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('AnalyticsEvent', analyticsEventSchema);
 
+
