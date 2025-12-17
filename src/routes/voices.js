@@ -19,11 +19,23 @@ router.get('/', async (req, res) => {
     }
 });
 
+// Default voices to return if database is empty and ElevenLabs fails
+// These are standard ElevenLabs voices that should always work
+const DEFAULT_VOICES = [
+    { voiceId: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', category: 'premade', enabled: true },
+    { voiceId: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', category: 'premade', enabled: true },
+    { voiceId: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', category: 'premade', enabled: true },
+    { voiceId: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', category: 'premade', enabled: true },
+    { voiceId: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', category: 'premade', enabled: true },
+    { voiceId: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', category: 'premade', enabled: true },
+];
+
 // GET /enabled - Get only enabled voices (for app use)
 router.get('/enabled', async (req, res) => {
     try {
         if (mongoose.connection.readyState !== 1) {
-            return res.status(503).json({ message: 'Database not connected' });
+            console.log('⚠️ Database not connected, returning default voices');
+            return res.json(DEFAULT_VOICES);
         }
 
         const voices = await Voice.find({ enabled: true }).sort({ displayOrder: 1, name: 1 });
@@ -48,15 +60,22 @@ router.get('/enabled', async (req, res) => {
                     return res.json(elevenLabsVoices);
                 } catch (elevenLabsError) {
                     console.error('ElevenLabs fallback failed:', elevenLabsError.message);
+                    // Fall through to return default voices
                 }
             }
+            
+            // Last resort: return hardcoded default voices
+            console.log('⚠️ Returning hardcoded default voices (ElevenLabs API failed or no key)');
+            return res.json(DEFAULT_VOICES);
         }
         
         console.log(`📢 Returning ${voices.length} enabled voices from database`);
         res.json(voices);
     } catch (error) {
         console.error('Get Enabled Voices Error:', error);
-        res.status(500).json({ message: 'Failed to fetch enabled voices', error: error.message });
+        // Even on error, return default voices so TTS works
+        console.log('⚠️ Error occurred, returning default voices');
+        res.json(DEFAULT_VOICES);
     }
 });
 
