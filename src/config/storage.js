@@ -7,7 +7,7 @@ let storage;
 
 // Try multiple methods to load GCS credentials
 const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-const credentialsJson = process.env.GCS_CREDENTIALS_JSON;
+const credentialsJson = process.env.GCS_CREDENTIALS_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 
 if (credentialsJson) {
     // Method 1: Credentials provided as JSON string (for Render/cloud deployments)
