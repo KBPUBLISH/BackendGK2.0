@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const User = require('../models/User');
+const AppUser = require('../models/AppUser');
 
 // Store pending purchases (external_id -> status)
 // In production, this should be in Redis or database
@@ -29,6 +30,25 @@ const buildUserQuery = (externalId) => {
         conditions.unshift({ _id: externalId });
     }
     return { $or: conditions };
+};
+
+// Helper to find user in both User and AppUser collections
+const findUserInAllCollections = async (externalId) => {
+    const query = buildUserQuery(externalId);
+    
+    // Check User collection first
+    let user = await User.findOne(query);
+    if (user) {
+        return { user, collection: 'User' };
+    }
+    
+    // Check AppUser collection
+    let appUser = await AppUser.findOne(query);
+    if (appUser) {
+        return { user: appUser, collection: 'AppUser' };
+    }
+    
+    return { user: null, collection: null };
 };
 
 /**
@@ -74,22 +94,42 @@ router.post('/revenuecat', async (req, res) => {
                     updatedAt: Date.now()
                 });
                 
-                // Try to update user in database
+                // Try to update user in BOTH database collections
+                let userUpdated = false;
+                
+                // Update User collection
                 try {
                     const user = await User.findOne(buildUserQuery(externalId));
-                    
                     if (user) {
                         user.isPremium = true;
                         user.subscriptionProductId = productId;
                         user.subscriptionExpiresAt = expirationDate ? new Date(expirationDate) : null;
                         await user.save();
-                        console.log(`✅ Updated user ${user._id} to premium`);
-                    } else {
-                        console.log(`⚠️ User not found in DB, but marked in pending: ${externalId}`);
+                        console.log(`✅ Updated User ${user._id} (${user.email}) to premium`);
+                        userUpdated = true;
                     }
                 } catch (dbError) {
-                    console.error('DB update error:', dbError);
-                    // Still mark as complete even if DB update fails
+                    console.error('User DB update error:', dbError);
+                }
+                
+                // Update AppUser collection
+                try {
+                    const appUser = await AppUser.findOne(buildUserQuery(externalId));
+                    if (appUser) {
+                        appUser.subscriptionStatus = 'active';
+                        appUser.subscriptionPlan = productId?.includes('yearly') || productId?.includes('annual') ? 'annual' : 'monthly';
+                        appUser.subscriptionStartDate = new Date();
+                        appUser.subscriptionEndDate = expirationDate ? new Date(expirationDate) : null;
+                        await appUser.save();
+                        console.log(`✅ Updated AppUser ${appUser._id} (${appUser.email || appUser.deviceId}) to active subscription`);
+                        userUpdated = true;
+                    }
+                } catch (dbError) {
+                    console.error('AppUser DB update error:', dbError);
+                }
+                
+                if (!userUpdated) {
+                    console.log(`⚠️ No user found in either collection for: ${externalId}, but marked in pending`);
                 }
                 break;
                 
@@ -103,16 +143,28 @@ router.post('/revenuecat', async (req, res) => {
                     updatedAt: Date.now()
                 });
                 
+                // Update User collection
                 try {
                     const user = await User.findOne(buildUserQuery(externalId));
-                    
                     if (user) {
                         user.isPremium = false;
                         await user.save();
-                        console.log(`✅ Updated user ${user._id} to non-premium`);
+                        console.log(`✅ Updated User ${user._id} (${user.email}) to non-premium`);
                     }
                 } catch (dbError) {
-                    console.error('DB update error:', dbError);
+                    console.error('User DB update error:', dbError);
+                }
+                
+                // Update AppUser collection
+                try {
+                    const appUser = await AppUser.findOne(buildUserQuery(externalId));
+                    if (appUser) {
+                        appUser.subscriptionStatus = 'expired';
+                        await appUser.save();
+                        console.log(`✅ Updated AppUser ${appUser._id} (${appUser.email || appUser.deviceId}) to expired`);
+                    }
+                } catch (dbError) {
+                    console.error('AppUser DB update error:', dbError);
                 }
                 break;
                 
@@ -143,7 +195,7 @@ router.get('/purchase-status/:externalId', async (req, res) => {
         // Check pending purchases map first (fastest)
         const pending = pendingPurchases.get(externalId);
         if (pending && pending.status === 'active') {
-            console.log(`✅ Found active purchase in pending map`);
+            console.log(`✅ Found active purchase in pending map for: ${externalId}`);
             return res.json({
                 isPremium: true,
                 status: 'active',
@@ -151,26 +203,49 @@ router.get('/purchase-status/:externalId', async (req, res) => {
             });
         }
         
-        // Also check database
+        // Check User collection (authentication users)
         try {
             const user = await User.findOne(buildUserQuery(externalId));
             
-            if (user && user.isPremium) {
-                console.log(`✅ Found premium user in database`);
-                return res.json({
-                    isPremium: true,
-                    status: 'active',
-                    source: 'database'
-                });
+            if (user) {
+                console.log(`📋 Found user in User collection: ${user.email}`);
+                if (user.isPremium) {
+                    console.log(`✅ User ${user.email} is premium in User collection`);
+                    return res.json({
+                        isPremium: true,
+                        status: 'active',
+                        source: 'database-user'
+                    });
+                }
             }
         } catch (dbError) {
-            console.error('DB lookup error:', dbError);
+            console.error('User DB lookup error:', dbError);
+        }
+        
+        // Check AppUser collection (app tracking users)
+        try {
+            const appUser = await AppUser.findOne(buildUserQuery(externalId));
+            
+            if (appUser) {
+                console.log(`📋 Found user in AppUser collection: ${appUser.email || appUser.deviceId}`);
+                if (appUser.subscriptionStatus === 'active') {
+                    console.log(`✅ AppUser ${appUser.email || appUser.deviceId} has active subscription`);
+                    return res.json({
+                        isPremium: true,
+                        status: 'active',
+                        source: 'database-appuser'
+                    });
+                }
+            }
+        } catch (dbError) {
+            console.error('AppUser DB lookup error:', dbError);
         }
         
         // Not found or not premium
+        console.log(`❌ No premium subscription found for: ${externalId}`);
         res.json({
             isPremium: false,
-            status: pending?.status || 'pending'
+            status: pending?.status || 'not_found'
         });
         
     } catch (error) {

@@ -16,6 +16,23 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  // Subscription fields (set by RevenueCat webhook)
+  isPremium: {
+    type: Boolean,
+    default: false,
+  },
+  subscriptionProductId: {
+    type: String,
+  },
+  subscriptionExpiresAt: {
+    type: Date,
+  },
+  // Device ID for cross-device subscription lookup
+  deviceId: {
+    type: String,
+  },
+}, {
+  timestamps: true,
 });
 
 UserSchema.pre('save', async function () {
