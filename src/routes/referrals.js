@@ -331,23 +331,39 @@ router.get('/stats/:userId', async (req, res) => {
  */
 router.get('/admin/list', async (req, res) => {
     try {
-        // Get ALL AppUsers (not just those with referral codes)
-        const users = await AppUser.find(
+        // Get ALL AppUsers
+        const appUsers = await AppUser.find(
             {},
             { email: 1, deviceId: 1, referralCode: 1, referralCount: 1, coins: 1, referredBy: 1 }
         ).limit(50);
         
+        // Also get auth Users for comparison
+        const authUsers = await User.find(
+            {},
+            { email: 1, isPremium: 1, createdAt: 1 }
+        ).limit(50);
+        
         return res.json({ 
             success: true, 
-            count: users.length,
-            users: users.map(u => ({
-                email: u.email || 'N/A',
-                deviceId: u.deviceId ? u.deviceId.substring(0, 20) + '...' : 'N/A',
-                referralCode: u.referralCode,
-                referralCount: u.referralCount || 0,
-                coins: u.coins || 0,
-                referredBy: u.referredBy || null
-            }))
+            appUsers: {
+                count: appUsers.length,
+                users: appUsers.map(u => ({
+                    email: u.email || 'N/A',
+                    deviceId: u.deviceId ? u.deviceId.substring(0, 20) + '...' : 'N/A',
+                    referralCode: u.referralCode,
+                    referralCount: u.referralCount || 0,
+                    coins: u.coins || 0,
+                    referredBy: u.referredBy || null
+                }))
+            },
+            authUsers: {
+                count: authUsers.length,
+                users: authUsers.map(u => ({
+                    email: u.email || 'N/A',
+                    isPremium: u.isPremium || false,
+                    createdAt: u.createdAt
+                }))
+            }
         });
     } catch (error) {
         console.error('List referrals error:', error);
