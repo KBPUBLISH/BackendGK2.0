@@ -155,7 +155,7 @@ router.post('/redeem', async (req, res) => {
             });
         }
 
-        // Check if user already has a referredBy
+        // Check if user already has a referredBy (can only use one code ever)
         if (user.referredBy) {
             return res.json({ 
                 success: false, 
@@ -170,6 +170,26 @@ router.post('/redeem', async (req, res) => {
             return res.json({ 
                 success: false, 
                 message: 'Invalid referral code' 
+            });
+        }
+
+        // Check if referrer is in the same parent account (sibling/family member)
+        // This prevents kids in the same family from referring each other
+        const userParentId = user.parentId || user.parentEmail || user.email;
+        const referrerParentId = referrer.parentId || referrer.parentEmail || referrer.email;
+        
+        if (userParentId && referrerParentId && userParentId === referrerParentId) {
+            return res.json({ 
+                success: false, 
+                message: "You can't use a referral code from your family account!" 
+            });
+        }
+
+        // Additional check: if they share the same deviceId, they're likely the same household
+        if (user.deviceId && referrer.deviceId && user.deviceId === referrer.deviceId) {
+            return res.json({ 
+                success: false, 
+                message: "You can't use a referral code from the same device!" 
             });
         }
 
