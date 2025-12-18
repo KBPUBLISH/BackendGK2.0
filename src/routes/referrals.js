@@ -67,13 +67,23 @@ router.post('/sync', async (req, res) => {
         }
 
         if (!user) {
-            // User doesn't exist yet - this is OK for anonymous users
-            // They may sync before creating an account
-            console.log(`ℹ️ User not found for referral sync: ${userId}`);
+            // User doesn't exist - create them with their referral code
+            console.log(`📝 Creating new AppUser for referral sync: ${userId}`);
+            user = new AppUser({
+                email: userId.includes('@') ? userId.toLowerCase() : undefined,
+                deviceId: !userId.includes('@') ? userId : undefined,
+                coins: 0,
+                referralCode: referralCode || null,
+                referredBy: referredBy || null,
+                referralCount: 0
+            });
+            await user.save();
+            console.log(`✅ Created AppUser with referral code: ${referralCode}`);
             return res.json({ 
                 success: true, 
-                synced: false,
-                message: 'User not found - referral will sync when account is created'
+                synced: true,
+                referralCode: referralCode,
+                message: 'User created and referral code synced'
             });
         }
         
