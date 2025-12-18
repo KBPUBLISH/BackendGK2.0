@@ -137,14 +137,21 @@ router.post('/redeem', async (req, res) => {
 
         const normalizedCode = codeToRedeem.trim().toUpperCase();
 
-        // Find the user redeeming the code
-        const user = await AppUser.findOne(buildUserQuery(userId));
+        // Find the user redeeming the code, or create a minimal record
+        let user = await AppUser.findOne(buildUserQuery(userId));
         
         if (!user) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'User not found' 
+            // Create a minimal user record for this device/email
+            console.log(`📝 Creating new AppUser for referral: ${userId}`);
+            user = new AppUser({
+                email: userId.includes('@') ? userId : undefined,
+                deviceId: !userId.includes('@') ? userId : undefined,
+                coins: 0,
+                referralCode: null, // Will be generated if they share
+                referredBy: null,
+                referralCount: 0
             });
+            await user.save();
         }
 
         // Check if user is trying to use their own code
