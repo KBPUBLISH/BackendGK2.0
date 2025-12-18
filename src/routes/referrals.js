@@ -331,8 +331,9 @@ router.get('/stats/:userId', async (req, res) => {
  */
 router.get('/admin/list', async (req, res) => {
     try {
+        // Get ALL AppUsers (not just those with referral codes)
         const users = await AppUser.find(
-            { referralCode: { $exists: true, $ne: null } },
+            {},
             { email: 1, deviceId: 1, referralCode: 1, referralCount: 1, coins: 1, referredBy: 1 }
         ).limit(50);
         
