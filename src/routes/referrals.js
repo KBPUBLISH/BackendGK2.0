@@ -33,12 +33,12 @@ const buildUserQuery = (userId) => {
 
 /**
  * POST /api/referrals/sync
- * Sync referral code for a user
- * Called after signup/purchase to ensure referral code is stored in backend
+ * Sync user profile data including referral code, kids, coins, etc.
+ * Called after signup/purchase and when profile changes
  */
 router.post('/sync', async (req, res) => {
     try {
-        const { userId, referralCode, referredBy } = req.body;
+        const { userId, referralCode, referredBy, kidProfiles, parentName, coins, platform } = req.body;
 
         if (!userId) {
             return res.status(400).json({ 
@@ -56,26 +56,38 @@ router.post('/sync', async (req, res) => {
 
         if (!user) {
             // User doesn't exist in AppUser - create them
-            console.log(`📝 Creating new AppUser for referral sync: ${userId}`);
+            console.log(`📝 Creating new AppUser for sync: ${userId}`);
             
             const newUser = {
                 referralCode: referralCode || undefined,
                 referredBy: referredBy || undefined,
-                referralCount: 0
+                referralCount: 0,
+                coins: coins || 500,
+                platform: platform || 'unknown',
             };
             
             if (cleanEmail) newUser.email = cleanEmail;
             if (cleanDeviceId) newUser.deviceId = cleanDeviceId;
             
+            // Add kid profiles if provided
+            if (kidProfiles && Array.isArray(kidProfiles)) {
+                newUser.kidProfiles = kidProfiles.map(kid => ({
+                    name: kid.name,
+                    age: kid.age,
+                    avatarSeed: kid.avatarSeed || kid.avatar,
+                    createdAt: kid.createdAt || new Date()
+                }));
+            }
+            
             user = await AppUser.create(newUser);
-            console.log(`✅ Created AppUser: ${user._id} with referral code: ${referralCode}`);
+            console.log(`✅ Created AppUser: ${user._id} with ${kidProfiles?.length || 0} kids`);
             
             return res.json({ 
                 success: true, 
                 synced: true,
                 referralCode: referralCode,
                 userId: user._id.toString(),
-                message: 'User created and referral code synced'
+                message: 'User created and profile synced'
             });
         }
         
@@ -84,28 +96,48 @@ router.post('/sync', async (req, res) => {
         // Update referral code if not set
         if (referralCode && !user.referralCode) {
             user.referralCode = referralCode;
-            await user.save();
-            console.log(`✅ Synced referral code ${referralCode} for user ${user.email || userId}`);
         }
         
         if (referredBy && !user.referredBy) {
             user.referredBy = referredBy;
-            await user.save();
         }
+
+        // Update kid profiles (always overwrite with latest from client)
+        if (kidProfiles && Array.isArray(kidProfiles)) {
+            user.kidProfiles = kidProfiles.map(kid => ({
+                name: kid.name,
+                age: kid.age,
+                avatarSeed: kid.avatarSeed || kid.avatar,
+                createdAt: kid.createdAt || new Date()
+            }));
+            console.log(`👶 Synced ${kidProfiles.length} kid profile(s) for ${user.email || userId}`);
+        }
+
+        // Update platform if provided
+        if (platform && platform !== 'unknown') {
+            user.platform = platform;
+        }
+
+        // Update last active
+        user.lastActiveAt = new Date();
+
+        await user.save();
+        console.log(`✅ Profile synced for user ${user.email || userId}`);
 
         return res.json({ 
             success: true, 
             synced: true,
             referralCode: user.referralCode || referralCode,
-            userId: user._id.toString()
+            userId: user._id.toString(),
+            kidCount: user.kidProfiles?.length || 0
         });
 
     } catch (error) {
-        console.error('Referral sync error:', error);
+        console.error('Profile sync error:', error);
         return res.status(200).json({ 
             success: false, 
             synced: false,
-            message: 'Referral sync failed',
+            message: 'Profile sync failed',
             error: error.message 
         });
     }

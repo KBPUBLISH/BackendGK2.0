@@ -1,10 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const AppUser = require('../models/AppUser');
+const User = require('../models/User');
 
 /**
  * GET /api/analytics/users
  * Get comprehensive user analytics for the dashboard
+ * Merges data from both User (auth) and AppUser (app data) collections
  */
 router.get('/users', async (req, res) => {
     try {
@@ -15,11 +17,80 @@ router.get('/users', async (req, res) => {
         const monthStart = new Date(todayStart);
         monthStart.setMonth(monthStart.getMonth() - 1);
 
-        // Get all users with their details
-        const allUsers = await AppUser.find({})
+        // Get users from AppUser collection (app-specific data)
+        const appUsers = await AppUser.find({})
             .select('email deviceId coins kidProfiles stats createdAt lastActiveAt subscriptionStatus platform referralCode referralCount')
             .sort({ createdAt: -1 })
             .lean();
+
+        // Get users from User collection (authentication accounts)
+        const authUsers = await User.find({})
+            .select('email username isPremium subscriptionProductId subscriptionExpiresAt deviceId createdAt updatedAt')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Create a map of AppUser data by email for quick lookup
+        const appUserMap = new Map();
+        appUsers.forEach(u => {
+            if (u.email) appUserMap.set(u.email.toLowerCase(), u);
+            if (u.deviceId) appUserMap.set(u.deviceId, u);
+        });
+
+        // Merge: Start with auth users, enrich with app data
+        const mergedUsers = [];
+        const processedEmails = new Set();
+
+        // First, add all auth users (enriched with app data if available)
+        authUsers.forEach(authUser => {
+            const email = authUser.email?.toLowerCase();
+            const appData = email ? appUserMap.get(email) : null;
+            
+            mergedUsers.push({
+                _id: authUser._id,
+                email: authUser.email,
+                username: authUser.username,
+                deviceId: authUser.deviceId || appData?.deviceId,
+                coins: appData?.coins || 0,
+                kidProfiles: appData?.kidProfiles || [],
+                stats: appData?.stats || {},
+                subscriptionStatus: authUser.isPremium ? 'active' : (appData?.subscriptionStatus || 'free'),
+                platform: appData?.platform || 'unknown',
+                referralCode: appData?.referralCode,
+                referralCount: appData?.referralCount || 0,
+                createdAt: authUser.createdAt,
+                lastActiveAt: appData?.lastActiveAt || authUser.updatedAt,
+                source: 'auth', // Track where this user came from
+            });
+            
+            if (email) processedEmails.add(email);
+        });
+
+        // Then add AppUsers that don't have an auth account (anonymous users)
+        appUsers.forEach(appUser => {
+            const email = appUser.email?.toLowerCase();
+            if (email && processedEmails.has(email)) return; // Already added via auth
+            
+            mergedUsers.push({
+                _id: appUser._id,
+                email: appUser.email,
+                deviceId: appUser.deviceId,
+                coins: appUser.coins || 0,
+                kidProfiles: appUser.kidProfiles || [],
+                stats: appUser.stats || {},
+                subscriptionStatus: appUser.subscriptionStatus || 'free',
+                platform: appUser.platform || 'unknown',
+                referralCode: appUser.referralCode,
+                referralCount: appUser.referralCount || 0,
+                createdAt: appUser.createdAt,
+                lastActiveAt: appUser.lastActiveAt,
+                source: 'app', // Anonymous or app-only user
+            });
+        });
+
+        // Sort by createdAt descending
+        mergedUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        const allUsers = mergedUsers;
 
         // Count new accounts by time period
         const newToday = allUsers.filter(u => new Date(u.createdAt) >= todayStart).length;
@@ -59,6 +130,7 @@ router.get('/users', async (req, res) => {
         const formattedUsers = allUsers.map(user => ({
             id: user._id,
             email: user.email || 'Anonymous',
+            username: user.username,
             deviceId: user.deviceId,
             coins: user.coins || 0,
             kidCount: user.kidProfiles?.length || 0,
@@ -72,7 +144,12 @@ router.get('/users', async (req, res) => {
             referralCount: user.referralCount || 0,
             createdAt: user.createdAt,
             lastActiveAt: user.lastActiveAt,
+            source: user.source, // 'auth' = has login account, 'app' = anonymous/app-only
         }));
+
+        // Count by source
+        const authUserCount = allUsers.filter(u => u.source === 'auth').length;
+        const appOnlyUserCount = allUsers.filter(u => u.source === 'app').length;
 
         // Get daily signups for the past 30 days
         const dailySignups = [];
@@ -116,6 +193,8 @@ router.get('/users', async (req, res) => {
             success: true,
             summary: {
                 totalUsers: allUsers.length,
+                authUsers: authUserCount,      // Users with login accounts
+                anonymousUsers: appOnlyUserCount, // Anonymous/app-only users
                 totalCoins,
                 totalKids,
                 totalSessions,
@@ -143,6 +222,68 @@ router.get('/users', async (req, res) => {
         res.status(500).json({ 
             success: false, 
             message: 'Failed to fetch analytics',
+            error: error.message 
+        });
+    }
+});
+
+/**
+ * POST /api/analytics/sync-stats
+ * Sync activity stats from the frontend app
+ */
+router.post('/sync-stats', async (req, res) => {
+    try {
+        const { userId, stats } = req.body;
+
+        if (!userId || !stats) {
+            return res.status(400).json({ success: false, message: 'userId and stats are required' });
+        }
+
+        // Build query to find user by various identifiers
+        const query = {};
+        if (userId.includes('@')) {
+            query.email = userId;
+        } else if (userId.match(/^[0-9a-fA-F]{24}$/)) {
+            query._id = userId;
+        } else {
+            query.deviceId = userId;
+        }
+
+        // Find or create AppUser
+        let user = await AppUser.findOne(query);
+
+        if (!user) {
+            // Create new AppUser
+            user = new AppUser({
+                email: userId.includes('@') ? userId : undefined,
+                deviceId: !userId.includes('@') ? userId : undefined,
+                stats: stats,
+                lastActiveAt: new Date(),
+            });
+        } else {
+            // Update existing user's stats (merge, taking the higher value)
+            user.stats = {
+                totalSessions: Math.max(user.stats?.totalSessions || 0, stats.totalSessions || 0),
+                totalTimeSpent: Math.max(user.stats?.totalTimeSpent || 0, stats.totalTimeSpent || 0),
+                booksRead: Math.max(user.stats?.booksRead || 0, stats.booksRead || 0),
+                playlistsPlayed: Math.max(user.stats?.playlistsPlayed || 0, stats.playlistsPlayed || 0),
+                lessonsCompleted: Math.max(user.stats?.lessonsCompleted || 0, stats.lessonsCompleted || 0),
+                gamesPlayed: Math.max(user.stats?.gamesPlayed || 0, stats.gamesPlayed || 0),
+                coloringSessions: Math.max(user.stats?.coloringSessions || 0, stats.coloringSessions || 0),
+            };
+            user.lastActiveAt = new Date();
+        }
+
+        await user.save();
+
+        console.log(`📊 Stats synced for ${userId}:`, user.stats);
+
+        res.json({ success: true, message: 'Stats synced', stats: user.stats });
+    } catch (error) {
+        console.error('Stats sync error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to sync stats',
             error: error.message 
         });
     }
