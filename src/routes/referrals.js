@@ -153,11 +153,13 @@ router.post('/redeem', async (req, res) => {
             });
         }
 
-        // Check if user already has a referredBy (can only use one code ever)
-        if (user.referredBy) {
+        // Check if user has already used THIS specific code
+        // (users CAN use multiple different codes - encourages sharing!)
+        const usedCodes = user.usedReferralCodes || [];
+        if (usedCodes.includes(normalizedCode)) {
             return res.json({ 
                 success: false, 
-                message: "You've already used a referral code!" 
+                message: "You've already used this referral code!" 
             });
         }
 
@@ -191,12 +193,12 @@ router.post('/redeem', async (req, res) => {
             });
         }
 
-        // Award coins to both users
-        const REFERRAL_BONUS = 500;
+        // Award coins to both users (250 each to encourage more sharing)
+        const REFERRAL_BONUS = 250;
 
-        // Update the user who redeemed
+        // Update the user who redeemed - track this code as used
         await AppUser.findByIdAndUpdate(user._id, {
-            referredBy: normalizedCode,
+            $push: { usedReferralCodes: normalizedCode },
             $inc: { coins: REFERRAL_BONUS }
         });
 
@@ -213,7 +215,12 @@ router.post('/redeem', async (req, res) => {
         // Send push notification to the referrer
         const redeemerName = user.parentName || user.email?.split('@')[0] || 'A friend';
         try {
-            await notifyReferralRedeemed(referrer._id.toString(), redeemerName, REFERRAL_BONUS);
+            await notifyReferralRedeemed(
+                referrer._id.toString(),
+                referrer.oneSignalPlayerId, // Pass player ID for targeted notification
+                redeemerName, 
+                REFERRAL_BONUS
+            );
             console.log(`📱 Notification sent to referrer ${referrer.email} about ${REFERRAL_BONUS} coins earned`);
         } catch (notifError) {
             console.warn('⚠️ Failed to send referral notification:', notifError.message);
@@ -292,7 +299,7 @@ router.get('/stats/:userId', async (req, res) => {
                 referralCode: user.referralCode,
                 referralCount: user.referralCount || 0,
                 referredBy: user.referredBy || null,
-                totalCoinsFromReferrals: (user.referralCount || 0) * 500
+                totalCoinsFromReferrals: (user.referralCount || 0) * 250
             }
         });
 
@@ -301,6 +308,60 @@ router.get('/stats/:userId', async (req, res) => {
         return res.status(500).json({ 
             success: false, 
             message: 'Failed to get referral stats',
+            error: error.message 
+        });
+    }
+});
+
+/**
+ * POST /api/referrals/register-push
+ * Register OneSignal player ID for push notifications
+ */
+router.post('/register-push', async (req, res) => {
+    try {
+        const { userId, oneSignalPlayerId } = req.body;
+
+        if (!userId || !oneSignalPlayerId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'userId and oneSignalPlayerId are required' 
+            });
+        }
+
+        // Find or create user
+        let user = await AppUser.findOne(buildUserQuery(userId));
+        
+        if (!user) {
+            // Create user with player ID
+            const cleanEmail = userId.includes('@') ? userId.toLowerCase().trim() : null;
+            const cleanDeviceId = !userId.includes('@') ? userId : null;
+            
+            const newUser = {
+                oneSignalPlayerId,
+                referralCount: 0
+            };
+            if (cleanEmail) newUser.email = cleanEmail;
+            if (cleanDeviceId) newUser.deviceId = cleanDeviceId;
+            
+            user = await AppUser.create(newUser);
+            console.log(`✅ Created AppUser with OneSignal player ID: ${oneSignalPlayerId.substring(0, 10)}...`);
+        } else {
+            // Update existing user with player ID
+            user.oneSignalPlayerId = oneSignalPlayerId;
+            await user.save();
+            console.log(`✅ Updated OneSignal player ID for user: ${user.email || userId}`);
+        }
+
+        return res.json({ 
+            success: true, 
+            message: 'Push notification registered'
+        });
+
+    } catch (error) {
+        console.error('Register push error:', error);
+        return res.status(200).json({ 
+            success: false, 
+            message: 'Failed to register push',
             error: error.message 
         });
     }

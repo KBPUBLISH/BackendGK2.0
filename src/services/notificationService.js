@@ -99,6 +99,48 @@ const sendNotificationToUser = async ({ userId, title, message, url, imageUrl, d
 };
 
 /**
+ * Send a push notification to a specific user by their OneSignal player ID
+ */
+const sendNotificationByPlayerId = async ({ playerId, title, message, url, imageUrl, data = {} }) => {
+    const oneSignalClient = getClient();
+    if (!oneSignalClient) {
+        console.log('📵 Notification skipped (OneSignal not configured):', title);
+        return null;
+    }
+
+    if (!playerId) {
+        console.log('📵 Notification skipped (no playerId provided):', title);
+        return null;
+    }
+
+    try {
+        const notification = {
+            headings: { en: title },
+            contents: { en: message },
+            include_player_ids: [playerId],
+            data: data
+        };
+
+        if (url) {
+            notification.url = url;
+        }
+
+        if (imageUrl) {
+            notification.big_picture = imageUrl;
+            notification.chrome_web_image = imageUrl;
+            notification.ios_attachments = { image: imageUrl };
+        }
+
+        const response = await oneSignalClient.createNotification(notification);
+        console.log('✅ Notification sent to player:', playerId.substring(0, 10) + '...', '-', title, '- Recipients:', response.body.recipients);
+        return response.body;
+    } catch (error) {
+        console.error('❌ Failed to send notification to player:', playerId.substring(0, 10) + '...', error.message);
+        return null;
+    }
+};
+
+/**
  * Notification templates for automatic notifications
  */
 const NotificationTemplates = {
@@ -190,21 +232,34 @@ const notifyNewLesson = async (lesson) => {
 
 /**
  * Send notification to referrer when their code is redeemed
- * @param {string} referrerId - The user ID of the referrer
+ * @param {string} referrerId - The user ID of the referrer (MongoDB _id)
+ * @param {string} oneSignalPlayerId - The OneSignal player ID of the referrer
  * @param {string} friendName - Name of the friend who redeemed (optional)
  * @param {number} coinsAwarded - Number of coins awarded
  */
-const notifyReferralRedeemed = async (referrerId, friendName, coinsAwarded = 500) => {
+const notifyReferralRedeemed = async (referrerId, oneSignalPlayerId, friendName, coinsAwarded = 250) => {
     const template = NotificationTemplates.referralRedeemed(friendName, coinsAwarded);
-    return sendNotificationToUser({
-        userId: referrerId,
-        ...template
-    });
+    
+    // Try player ID first (more reliable), then fall back to external user ID
+    if (oneSignalPlayerId) {
+        console.log(`📱 Sending referral notification via player ID: ${oneSignalPlayerId.substring(0, 10)}...`);
+        return sendNotificationByPlayerId({
+            playerId: oneSignalPlayerId,
+            ...template
+        });
+    } else {
+        console.log(`📱 Sending referral notification via external user ID: ${referrerId}`);
+        return sendNotificationToUser({
+            userId: referrerId,
+            ...template
+        });
+    }
 };
 
 module.exports = {
     sendNotification,
     sendNotificationToUser,
+    sendNotificationByPlayerId,
     notifyNewBook,
     notifyNewPlaylist,
     notifyNewPlaylistItem,

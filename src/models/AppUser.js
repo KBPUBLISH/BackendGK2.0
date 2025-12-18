@@ -101,11 +101,22 @@ const appUserSchema = new mongoose.Schema({
         sparse: true,
     },
     referredBy: {
-        type: String, // referralCode of who referred this user
+        type: String, // Legacy: first referralCode used (kept for backwards compatibility)
+    },
+    usedReferralCodes: {
+        type: [String], // All referral codes this user has redeemed
+        default: [],
     },
     referralCount: {
         type: Number,
         default: 0,
+    },
+    
+    // Push notifications
+    oneSignalPlayerId: {
+        type: String,
+        sparse: true,
+        index: true,
     },
     
     // Usage statistics (aggregate counters for quick access)
