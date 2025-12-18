@@ -161,28 +161,15 @@ const appUserSchema = new mongoose.Schema({
         default: 'unknown',
     },
     
-    // Timestamps
-    createdAt: {
-        type: Date,
-        default: Date.now,
-        index: true,
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now,
-    },
-});
-
-// Update updatedAt on save
-appUserSchema.pre('save', function(next) {
-    this.updatedAt = Date.now();
-    next();
+}, {
+    timestamps: true // Automatically manage createdAt and updatedAt
 });
 
 // Indexes for analytics queries
 appUserSchema.index({ subscriptionStatus: 1, createdAt: -1 });
 appUserSchema.index({ onboardingStatus: 1, createdAt: -1 });
 appUserSchema.index({ lastActiveAt: -1 });
+appUserSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('AppUser', appUserSchema);
 
