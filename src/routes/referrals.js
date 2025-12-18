@@ -47,80 +47,61 @@ router.post('/sync', async (req, res) => {
             });
         }
 
+        // Clean email to lowercase
+        const cleanEmail = userId.includes('@') ? userId.toLowerCase().trim() : null;
+        const cleanDeviceId = !userId.includes('@') ? userId : null;
+
         // Find user using safe query that handles various ID formats
-        // First try AppUser (main app users with referral fields)
         let user = await AppUser.findOne(buildUserQuery(userId));
-        let userModel = 'AppUser';
-
-        // Fallback to User model (legacy/CMS users)
-        if (!user) {
-            try {
-                // User model only has email field, not deviceId
-                const userQuery = isValidObjectId(userId) 
-                    ? { $or: [{ _id: userId }, { email: userId }] }
-                    : { email: userId };
-                user = await User.findOne(userQuery);
-                if (user) userModel = 'User';
-            } catch (e) {
-                // Ignore - User model search failed
-            }
-        }
 
         if (!user) {
-            // User doesn't exist - create them with their referral code
+            // User doesn't exist in AppUser - create them
             console.log(`📝 Creating new AppUser for referral sync: ${userId}`);
-            user = new AppUser({
-                email: userId.includes('@') ? userId.toLowerCase() : undefined,
-                deviceId: !userId.includes('@') ? userId : undefined,
-                coins: 0,
-                referralCode: referralCode || null,
-                referredBy: referredBy || null,
+            
+            const newUser = {
+                referralCode: referralCode || undefined,
+                referredBy: referredBy || undefined,
                 referralCount: 0
-            });
-            await user.save();
-            console.log(`✅ Created AppUser with referral code: ${referralCode}`);
+            };
+            
+            if (cleanEmail) newUser.email = cleanEmail;
+            if (cleanDeviceId) newUser.deviceId = cleanDeviceId;
+            
+            user = await AppUser.create(newUser);
+            console.log(`✅ Created AppUser: ${user._id} with referral code: ${referralCode}`);
+            
             return res.json({ 
                 success: true, 
                 synced: true,
                 referralCode: referralCode,
+                userId: user._id.toString(),
                 message: 'User created and referral code synced'
             });
         }
         
-        console.log(`📍 Found user in ${userModel} model: ${user.email || userId}`);
+        console.log(`📍 Found existing AppUser: ${user.email || user.deviceId || userId}`);
 
-        // Update referral data (only AppUser model has referral fields)
-        if (userModel === 'AppUser') {
-            const updateData = {};
-            
-            if (referralCode && !user.referralCode) {
-                updateData.referralCode = referralCode;
-            }
-            
-            if (referredBy && !user.referredBy) {
-                updateData.referredBy = referredBy;
-            }
-
-            if (Object.keys(updateData).length > 0) {
-                await AppUser.findByIdAndUpdate(user._id, updateData);
-                console.log(`✅ Synced referral code ${referralCode || 'N/A'} for user ${user.email || userId}`);
-            } else {
-                console.log(`ℹ️ Referral already synced for user ${user.email || userId}`);
-            }
-        } else {
-            // User model doesn't have referral fields - just acknowledge
-            console.log(`ℹ️ User found in legacy User model (no referral fields): ${user.email || userId}`);
+        // Update referral code if not set
+        if (referralCode && !user.referralCode) {
+            user.referralCode = referralCode;
+            await user.save();
+            console.log(`✅ Synced referral code ${referralCode} for user ${user.email || userId}`);
+        }
+        
+        if (referredBy && !user.referredBy) {
+            user.referredBy = referredBy;
+            await user.save();
         }
 
         return res.json({ 
             success: true, 
             synced: true,
-            referralCode: user.referralCode || referralCode
+            referralCode: user.referralCode || referralCode,
+            userId: user._id.toString()
         });
 
     } catch (error) {
         console.error('Referral sync error:', error);
-        // Return success with error flag - don't crash the app for referral sync failures
         return res.status(200).json({ 
             success: false, 
             synced: false,
