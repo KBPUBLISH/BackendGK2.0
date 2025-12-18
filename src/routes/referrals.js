@@ -325,5 +325,38 @@ router.get('/stats/:userId', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/referrals/admin/list
+ * List all users with referral codes (admin only - for debugging)
+ */
+router.get('/admin/list', async (req, res) => {
+    try {
+        const users = await AppUser.find(
+            { referralCode: { $exists: true, $ne: null } },
+            { email: 1, deviceId: 1, referralCode: 1, referralCount: 1, coins: 1, referredBy: 1 }
+        ).limit(50);
+        
+        return res.json({ 
+            success: true, 
+            count: users.length,
+            users: users.map(u => ({
+                email: u.email || 'N/A',
+                deviceId: u.deviceId ? u.deviceId.substring(0, 20) + '...' : 'N/A',
+                referralCode: u.referralCode,
+                referralCount: u.referralCount || 0,
+                coins: u.coins || 0,
+                referredBy: u.referredBy || null
+            }))
+        });
+    } catch (error) {
+        console.error('List referrals error:', error);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Failed to list referrals',
+            error: error.message 
+        });
+    }
+});
+
 module.exports = router;
 
