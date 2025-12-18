@@ -278,7 +278,7 @@ router.get('/code/:userId', async (req, res) => {
 
 /**
  * GET /api/referrals/stats/:userId
- * Get referral statistics for a user
+ * Get referral statistics for a user (including coins for syncing)
  */
 router.get('/stats/:userId', async (req, res) => {
     try {
@@ -299,7 +299,9 @@ router.get('/stats/:userId', async (req, res) => {
                 referralCode: user.referralCode,
                 referralCount: user.referralCount || 0,
                 referredBy: user.referredBy || null,
-                totalCoinsFromReferrals: (user.referralCount || 0) * 250
+                totalCoinsFromReferrals: (user.referralCount || 0) * 250,
+                coins: user.coins || 0, // Include current coin balance for syncing
+                usedReferralCodes: user.usedReferralCodes || []
             }
         });
 
