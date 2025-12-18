@@ -73,10 +73,48 @@ const appUserSchema = new mongoose.Schema({
         type: Date,
     },
     
+    // Parent profile
+    parentName: {
+        type: String,
+        default: '',
+    },
+    
     // Kid profiles
     kidProfiles: [kidProfileSchema],
     activeKidProfileId: {
         type: mongoose.Schema.Types.ObjectId,
+    },
+    
+    // Equipped items (avatar customization)
+    equippedAvatar: {
+        type: mongoose.Schema.Types.Mixed, // Full avatar configuration
+    },
+    equippedShip: {
+        type: String,
+    },
+    equippedWheel: {
+        type: String,
+    },
+    equippedPet: {
+        type: String,
+    },
+    
+    // Unlocked items
+    unlockedAvatarItems: {
+        type: [String],
+        default: [],
+    },
+    unlockedShips: {
+        type: [String],
+        default: [],
+    },
+    unlockedWheels: {
+        type: [String],
+        default: [],
+    },
+    unlockedPets: {
+        type: [String],
+        default: [],
     },
     
     // Voice unlocks (parent-level)

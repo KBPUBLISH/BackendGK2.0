@@ -402,6 +402,152 @@ router.post('/register-push', async (req, res) => {
 });
 
 /**
+ * POST /api/referrals/profile/save
+ * Save complete user profile to backend (for cross-device sync)
+ */
+router.post('/profile/save', async (req, res) => {
+    try {
+        const { 
+            userId, 
+            parentName, 
+            kids, 
+            coins,
+            equippedAvatar,
+            equippedShip,
+            equippedWheel,
+            equippedPet,
+            unlockedAvatarItems,
+            unlockedShips,
+            unlockedWheels,
+            unlockedPets,
+            unlockedVoices,
+            defaultVoiceId
+        } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ success: false, message: 'userId is required' });
+        }
+
+        let user = await AppUser.findOne(buildUserQuery(userId));
+
+        if (!user) {
+            // Create new user
+            user = new AppUser({
+                email: userId.includes('@') ? userId.toLowerCase() : undefined,
+                deviceId: !userId.includes('@') ? userId : undefined,
+            });
+        }
+
+        // Update all profile fields
+        if (parentName !== undefined) user.parentName = parentName;
+        if (coins !== undefined) user.coins = coins;
+        if (equippedAvatar !== undefined) user.equippedAvatar = equippedAvatar;
+        if (equippedShip !== undefined) user.equippedShip = equippedShip;
+        if (equippedWheel !== undefined) user.equippedWheel = equippedWheel;
+        if (equippedPet !== undefined) user.equippedPet = equippedPet;
+        if (unlockedAvatarItems !== undefined) user.unlockedAvatarItems = unlockedAvatarItems;
+        if (unlockedShips !== undefined) user.unlockedShips = unlockedShips;
+        if (unlockedWheels !== undefined) user.unlockedWheels = unlockedWheels;
+        if (unlockedPets !== undefined) user.unlockedPets = unlockedPets;
+        if (unlockedVoices !== undefined) user.unlockedVoices = unlockedVoices;
+        if (defaultVoiceId !== undefined) user.defaultVoiceId = defaultVoiceId;
+        
+        // Update kid profiles (full replacement)
+        if (kids && Array.isArray(kids)) {
+            user.kidProfiles = kids.map(kid => ({
+                _id: kid.id || kid._id,
+                name: kid.name,
+                age: kid.age,
+                avatar: kid.avatar,
+                avatarSeed: kid.avatarSeed,
+            }));
+        }
+
+        user.lastActiveAt = new Date();
+        await user.save();
+
+        console.log(`✅ Profile saved for ${user.email || userId}`);
+
+        res.json({ 
+            success: true, 
+            message: 'Profile saved successfully' 
+        });
+
+    } catch (error) {
+        console.error('Profile save error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to save profile',
+            error: error.message 
+        });
+    }
+});
+
+/**
+ * GET /api/referrals/profile/load/:userId
+ * Load complete user profile from backend (for cross-device sync)
+ */
+router.get('/profile/load/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        if (!userId) {
+            return res.status(400).json({ success: false, message: 'userId is required' });
+        }
+
+        const user = await AppUser.findOne(buildUserQuery(userId)).lean();
+
+        if (!user) {
+            return res.json({ 
+                success: false, 
+                message: 'No profile found',
+                profile: null 
+            });
+        }
+
+        // Return full profile data
+        const profile = {
+            parentName: user.parentName || '',
+            kids: (user.kidProfiles || []).map(kid => ({
+                id: kid._id?.toString() || kid.id,
+                name: kid.name,
+                age: kid.age,
+                avatar: kid.avatar,
+                avatarSeed: kid.avatarSeed,
+            })),
+            coins: user.coins || 0,
+            equippedAvatar: user.equippedAvatar,
+            equippedShip: user.equippedShip,
+            equippedWheel: user.equippedWheel,
+            equippedPet: user.equippedPet,
+            unlockedAvatarItems: user.unlockedAvatarItems || [],
+            unlockedShips: user.unlockedShips || [],
+            unlockedWheels: user.unlockedWheels || [],
+            unlockedPets: user.unlockedPets || [],
+            unlockedVoices: user.unlockedVoices || [],
+            defaultVoiceId: user.defaultVoiceId,
+            referralCode: user.referralCode,
+            subscriptionStatus: user.subscriptionStatus,
+        };
+
+        console.log(`✅ Profile loaded for ${user.email || userId}`);
+
+        res.json({ 
+            success: true, 
+            profile 
+        });
+
+    } catch (error) {
+        console.error('Profile load error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to load profile',
+            error: error.message 
+        });
+    }
+});
+
+/**
  * GET /api/referrals/admin/list
  * List all users with referral codes (admin only - for debugging)
  */
