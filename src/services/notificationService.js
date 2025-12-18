@@ -57,6 +57,48 @@ const sendNotification = async ({ title, message, url, imageUrl, data = {} }) =>
 };
 
 /**
+ * Send a push notification to a specific user by their external user ID (usually their MongoDB _id or email)
+ */
+const sendNotificationToUser = async ({ userId, title, message, url, imageUrl, data = {} }) => {
+    const oneSignalClient = getClient();
+    if (!oneSignalClient) {
+        console.log('📵 Notification skipped (OneSignal not configured):', title, 'to user:', userId);
+        return null;
+    }
+
+    if (!userId) {
+        console.log('📵 Notification skipped (no userId provided):', title);
+        return null;
+    }
+
+    try {
+        const notification = {
+            headings: { en: title },
+            contents: { en: message },
+            include_external_user_ids: [userId.toString()],
+            data: data
+        };
+
+        if (url) {
+            notification.url = url;
+        }
+
+        if (imageUrl) {
+            notification.big_picture = imageUrl;
+            notification.chrome_web_image = imageUrl;
+            notification.ios_attachments = { image: imageUrl };
+        }
+
+        const response = await oneSignalClient.createNotification(notification);
+        console.log('✅ Notification sent to user:', userId, '-', title, '- Recipients:', response.body.recipients);
+        return response.body;
+    } catch (error) {
+        console.error('❌ Failed to send notification to user:', userId, error.message);
+        return null;
+    }
+};
+
+/**
  * Notification templates for automatic notifications
  */
 const NotificationTemplates = {
@@ -99,6 +141,13 @@ const NotificationTemplates = {
         url: `/#/lesson/${lesson._id}`,
         imageUrl: lesson.thumbnailUrl || null,
         data: { type: 'new_lesson', lessonId: lesson._id.toString() }
+    }),
+
+    // Referral code redeemed - notify the referrer
+    referralRedeemed: (friendName, coinsAwarded) => ({
+        title: '🎉 You Earned Gold Coins!',
+        message: `${friendName || 'A friend'} used your code! You earned ${coinsAwarded} gold coins!`,
+        data: { type: 'referral_reward', coinsAwarded }
     })
 };
 
@@ -139,12 +188,28 @@ const notifyNewLesson = async (lesson) => {
     return sendNotification(template);
 };
 
+/**
+ * Send notification to referrer when their code is redeemed
+ * @param {string} referrerId - The user ID of the referrer
+ * @param {string} friendName - Name of the friend who redeemed (optional)
+ * @param {number} coinsAwarded - Number of coins awarded
+ */
+const notifyReferralRedeemed = async (referrerId, friendName, coinsAwarded = 500) => {
+    const template = NotificationTemplates.referralRedeemed(friendName, coinsAwarded);
+    return sendNotificationToUser({
+        userId: referrerId,
+        ...template
+    });
+};
+
 module.exports = {
     sendNotification,
+    sendNotificationToUser,
     notifyNewBook,
     notifyNewPlaylist,
     notifyNewPlaylistItem,
     notifyNewLesson,
+    notifyReferralRedeemed,
     NotificationTemplates
 };
 

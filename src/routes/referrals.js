@@ -3,6 +3,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const AppUser = require('../models/AppUser');
 const User = require('../models/User'); // Fallback for legacy users
+const { notifyReferralRedeemed } = require('../services/notificationService');
 
 // Helper to check if a string is a valid MongoDB ObjectId
 const isValidObjectId = (id) => {
@@ -173,7 +174,7 @@ router.post('/redeem', async (req, res) => {
         }
 
         // Award coins to both users
-        const REFERRAL_BONUS = 100;
+        const REFERRAL_BONUS = 500;
 
         // Update the user who redeemed
         await AppUser.findByIdAndUpdate(user._id, {
@@ -190,6 +191,16 @@ router.post('/redeem', async (req, res) => {
         });
 
         console.log(`🎉 Referral redeemed: ${user.email || userId} used code ${normalizedCode} from ${referrer.email}`);
+
+        // Send push notification to the referrer
+        const redeemerName = user.parentName || user.email?.split('@')[0] || 'A friend';
+        try {
+            await notifyReferralRedeemed(referrer._id.toString(), redeemerName, REFERRAL_BONUS);
+            console.log(`📱 Notification sent to referrer ${referrer.email} about ${REFERRAL_BONUS} coins earned`);
+        } catch (notifError) {
+            console.warn('⚠️ Failed to send referral notification:', notifError.message);
+            // Don't fail the request if notification fails
+        }
 
         return res.json({ 
             success: true, 
@@ -263,7 +274,7 @@ router.get('/stats/:userId', async (req, res) => {
                 referralCode: user.referralCode,
                 referralCount: user.referralCount || 0,
                 referredBy: user.referredBy || null,
-                totalCoinsFromReferrals: (user.referralCount || 0) * 100
+                totalCoinsFromReferrals: (user.referralCount || 0) * 500
             }
         });
 
