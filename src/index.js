@@ -99,6 +99,7 @@ app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/webhooks', require('./routes/webhooks'));
 app.use('/api/translate', require('./routes/translate'));
 app.use('/api/referrals', require('./routes/referrals'));
+app.use('/api/featured', require('./routes/featured'));
 
 // ===========================================
 // HEALTH & STATUS ENDPOINTS
