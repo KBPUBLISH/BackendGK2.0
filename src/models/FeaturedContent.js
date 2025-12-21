@@ -37,11 +37,11 @@ const featuredContentSchema = new mongoose.Schema({
     // Display text
     title: {
         type: String,
-        default: 'Welcome to Godly Kids!',
+        default: 'Choose a Bedtime Story',
     },
     subtitle: {
         type: String,
-        default: 'Pick something to start your adventure.',
+        default: 'Pick something to start your adventure',
     },
 
     // Featured items (unified array)
