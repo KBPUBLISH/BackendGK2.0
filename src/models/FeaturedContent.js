@@ -60,22 +60,8 @@ const featuredContentSchema = new mongoose.Schema({
         type: Boolean,
         default: true,
     },
-
-    // Metadata
-    createdAt: {
-        type: Date,
-        default: Date.now,
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now,
-    },
-});
-
-// Update timestamp on save
-featuredContentSchema.pre('save', function(next) {
-    this.updatedAt = Date.now();
-    next();
+}, {
+    timestamps: true, // Automatically manages createdAt and updatedAt
 });
 
 module.exports = mongoose.model('FeaturedContent', featuredContentSchema);
