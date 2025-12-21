@@ -4,6 +4,35 @@ const FeaturedContent = require('../models/FeaturedContent');
 const Book = require('../models/Book');
 const Playlist = require('../models/Playlist');
 const Lesson = require('../models/Lesson');
+const mongoose = require('mongoose');
+
+// Helper to fetch content details by type
+const fetchContentDetails = async (item) => {
+    let model;
+    switch (item.contentType) {
+        case 'book': model = Book; break;
+        case 'playlist': model = Playlist; break;
+        case 'lesson': model = Lesson; break;
+        default: return null;
+    }
+    
+    try {
+        const content = await model.findById(item.contentId).lean();
+        if (!content) return null;
+
+        return {
+            _id: content._id,
+            type: item.contentType,
+            title: item.title || content.title,
+            subtitle: item.subtitle || content.subtitle || content.description,
+            imageUrl: item.imageUrl || content.coverImageUrl || content.thumbnailUrl,
+            order: item.order,
+        };
+    } catch (err) {
+        console.error(`Error fetching ${item.contentType} ${item.contentId}:`, err.message);
+        return null;
+    }
+};
 
 /**
  * GET /api/featured/new-user
@@ -12,211 +41,137 @@ const Lesson = require('../models/Lesson');
  */
 router.get('/new-user', async (req, res) => {
     try {
-        const featured = await FeaturedContent.findOne({ 
-            section: 'new_user_welcome',
-            isActive: true 
-        });
+        const config = await FeaturedContent.findOne({ section: 'new-user-welcome' }).lean();
 
-        if (!featured) {
-            // Return default empty state if not configured
+        if (!config) {
             return res.json({
                 success: true,
-                isConfigured: false,
-                welcomeTitle: 'Welcome to Godly Kids!',
-                welcomeSubtitle: 'Start exploring our wonderful content:',
-                items: [],
-                showSkipButton: true,
-                skipButtonText: 'Explore the App',
+                config: {
+                    section: 'new-user-welcome',
+                    title: 'Welcome to Godly Kids!',
+                    subtitle: 'Pick something to start your adventure.',
+                    maxItems: 6,
+                    skipButtonText: 'Skip for now',
+                    showSkipButton: true,
+                },
+                items: []
             });
         }
 
-        // Fetch full book details
-        const bookIds = featured.featuredBooks.map(fb => fb.bookId);
-        const books = await Book.find({ 
-            _id: { $in: bookIds },
-            status: 'published' 
-        }).select('title coverImageUrl description ageRange categories isAudio');
-
-        // Fetch full playlist details
-        const playlistIds = featured.featuredPlaylists.map(fp => fp.playlistId);
-        const playlists = await Playlist.find({ 
-            _id: { $in: playlistIds },
-            status: 'published' 
-        }).select('title coverImageUrl description type');
-
-        // Fetch full lesson details
-        const lessonIds = featured.featuredLessons.map(fl => fl.lessonId);
-        const lessons = await Lesson.find({ 
-            _id: { $in: lessonIds },
-            status: 'published' 
-        }).select('title thumbnailUrl description');
-
-        // Combine and format items with order
-        const items = [];
-
-        // Add books
-        featured.featuredBooks.forEach(fb => {
-            const book = books.find(b => b._id.toString() === fb.bookId.toString());
-            if (book) {
-                items.push({
-                    id: book._id,
-                    type: book.isAudio ? 'audiobook' : 'book',
-                    title: fb.customTitle || book.title,
-                    description: fb.customDescription || book.description,
-                    imageUrl: book.coverImageUrl,
-                    order: fb.order,
-                    ageRange: book.ageRange,
-                    categories: book.categories,
-                });
+        // Populate item details
+        const populatedItems = [];
+        for (const item of config.items || []) {
+            const details = await fetchContentDetails(item);
+            if (details) {
+                populatedItems.push(details);
             }
-        });
+        }
 
-        // Add playlists
-        featured.featuredPlaylists.forEach(fp => {
-            const playlist = playlists.find(p => p._id.toString() === fp.playlistId.toString());
-            if (playlist) {
-                items.push({
-                    id: playlist._id,
-                    type: 'playlist',
-                    title: fp.customTitle || playlist.title,
-                    description: fp.customDescription || playlist.description,
-                    imageUrl: playlist.coverImageUrl,
-                    order: fp.order,
-                    playlistType: playlist.type,
-                });
-            }
-        });
-
-        // Add lessons
-        featured.featuredLessons.forEach(fl => {
-            const lesson = lessons.find(l => l._id.toString() === fl.lessonId.toString());
-            if (lesson) {
-                items.push({
-                    id: lesson._id,
-                    type: 'lesson',
-                    title: fl.customTitle || lesson.title,
-                    description: fl.customDescription || lesson.description,
-                    imageUrl: lesson.thumbnailUrl,
-                    order: fl.order,
-                });
-            }
-        });
-
-        // Sort by order and limit
-        items.sort((a, b) => a.order - b.order);
-        const limitedItems = items.slice(0, featured.maxItemsToShow);
+        // Sort by order
+        populatedItems.sort((a, b) => a.order - b.order);
 
         res.json({
             success: true,
-            isConfigured: true,
-            welcomeTitle: featured.welcomeTitle,
-            welcomeSubtitle: featured.welcomeSubtitle,
-            items: limitedItems,
-            showSkipButton: featured.showSkipButton,
-            skipButtonText: featured.skipButtonText,
+            config: {
+                section: config.section,
+                title: config.title,
+                subtitle: config.subtitle,
+                maxItems: config.maxItems,
+                skipButtonText: config.skipButtonText,
+                showSkipButton: config.showSkipButton,
+            },
+            items: populatedItems.slice(0, config.maxItems)
         });
     } catch (error) {
-        console.error('Error fetching featured content:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to fetch featured content',
-            error: error.message 
-        });
+        console.error('Error fetching new user featured content:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch featured content' });
     }
 });
 
 /**
  * GET /api/featured/config/:section
- * Get full configuration for a section (for portal editing)
+ * Get configuration for a specific featured section (for portal editing)
  */
 router.get('/config/:section', async (req, res) => {
     try {
         const { section } = req.params;
-        
-        let featured = await FeaturedContent.findOne({ section });
+        let config = await FeaturedContent.findOne({ section }).lean();
 
-        if (!featured) {
-            // Create default config if doesn't exist
-            featured = new FeaturedContent({ section });
-            await featured.save();
+        if (!config) {
+            // Create a default config if it doesn't exist
+            config = await FeaturedContent.create({ section });
+            config = config.toObject();
         }
 
-        res.json({
-            success: true,
-            config: featured,
+        // Populate item details for display in portal
+        const populatedItems = [];
+        for (const item of config.items || []) {
+            const details = await fetchContentDetails(item);
+            if (details) {
+                populatedItems.push(details);
+            }
+        }
+        populatedItems.sort((a, b) => a.order - b.order);
+
+        res.json({ 
+            success: true, 
+            config: { 
+                ...config, 
+                items: populatedItems 
+            } 
         });
     } catch (error) {
-        console.error('Error fetching featured config:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to fetch featured config',
-            error: error.message 
-        });
+        console.error(`Error fetching featured config for ${req.params.section}:`, error);
+        res.status(500).json({ success: false, message: 'Failed to fetch featured config' });
     }
 });
 
 /**
  * PUT /api/featured/config/:section
- * Update featured content configuration (from portal)
+ * Update configuration for a specific featured section (from portal)
  */
 router.put('/config/:section', async (req, res) => {
     try {
         const { section } = req.params;
-        const {
-            welcomeTitle,
-            welcomeSubtitle,
-            featuredBooks,
-            featuredPlaylists,
-            featuredLessons,
-            isActive,
-            showSkipButton,
-            skipButtonText,
-            maxItemsToShow,
-            lastEditedBy,
-        } = req.body;
+        const { title, subtitle, items, maxItems, skipButtonText, showSkipButton } = req.body;
 
-        const updateData = {
-            updatedAt: Date.now(),
-        };
+        // Transform items from portal format to storage format
+        const transformedItems = (items || []).map((item, index) => ({
+            contentId: new mongoose.Types.ObjectId(item._id),
+            contentType: item.type,
+            order: index,
+            title: item.title,
+            subtitle: item.subtitle,
+            imageUrl: item.imageUrl,
+        }));
 
-        // Only update fields that are provided
-        if (welcomeTitle !== undefined) updateData.welcomeTitle = welcomeTitle;
-        if (welcomeSubtitle !== undefined) updateData.welcomeSubtitle = welcomeSubtitle;
-        if (featuredBooks !== undefined) updateData.featuredBooks = featuredBooks;
-        if (featuredPlaylists !== undefined) updateData.featuredPlaylists = featuredPlaylists;
-        if (featuredLessons !== undefined) updateData.featuredLessons = featuredLessons;
-        if (isActive !== undefined) updateData.isActive = isActive;
-        if (showSkipButton !== undefined) updateData.showSkipButton = showSkipButton;
-        if (skipButtonText !== undefined) updateData.skipButtonText = skipButtonText;
-        if (maxItemsToShow !== undefined) updateData.maxItemsToShow = maxItemsToShow;
-        if (lastEditedBy !== undefined) updateData.lastEditedBy = lastEditedBy;
-
-        const featured = await FeaturedContent.findOneAndUpdate(
+        const updatedConfig = await FeaturedContent.findOneAndUpdate(
             { section },
-            { $set: updateData },
-            { new: true, upsert: true }
-        );
+            {
+                title,
+                subtitle,
+                items: transformedItems,
+                maxItems,
+                skipButtonText,
+                showSkipButton,
+                updatedAt: new Date(),
+            },
+            { new: true, upsert: true, runValidators: true }
+        ).lean();
 
         console.log(`✅ Featured content updated for section: ${section}`);
 
-        res.json({
-            success: true,
-            message: 'Featured content updated',
-            config: featured,
-        });
+        res.json({ success: true, config: updatedConfig });
     } catch (error) {
-        console.error('Error updating featured config:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to update featured config',
-            error: error.message 
-        });
+        console.error(`Error updating featured config for ${req.params.section}:`, error);
+        res.status(500).json({ success: false, message: 'Failed to update featured config' });
     }
 });
 
 /**
  * GET /api/featured/available-content
  * Get all available books, playlists, lessons for selection in portal
+ * Returns combined content array for portal UI
  */
 router.get('/available-content', async (req, res) => {
     try {
@@ -227,7 +182,7 @@ router.get('/available-content', async (req, res) => {
 
         // Get all published playlists
         const playlists = await Playlist.find({ status: 'published' })
-            .select('title coverImageUrl type')
+            .select('title coverImageUrl thumbnailUrl type')
             .sort({ title: 1 });
 
         // Get all published lessons
@@ -235,26 +190,33 @@ router.get('/available-content', async (req, res) => {
             .select('title thumbnailUrl')
             .sort({ title: 1 });
 
-        res.json({
-            success: true,
-            books: books.map(b => ({
-                id: b._id,
+        // Combine into single content array for portal
+        const content = [
+            ...books.map(b => ({
+                _id: b._id,
                 title: b.title,
                 imageUrl: b.coverImageUrl,
-                type: b.isAudio ? 'audiobook' : 'book',
-                categories: b.categories,
+                type: 'book',
             })),
-            playlists: playlists.map(p => ({
-                id: p._id,
+            ...playlists.map(p => ({
+                _id: p._id,
                 title: p.title,
-                imageUrl: p.coverImageUrl,
-                type: p.type,
+                imageUrl: p.coverImageUrl || p.thumbnailUrl,
+                type: 'playlist',
             })),
-            lessons: lessons.map(l => ({
-                id: l._id,
+            ...lessons.map(l => ({
+                _id: l._id,
                 title: l.title,
                 imageUrl: l.thumbnailUrl,
+                type: 'lesson',
             })),
+        ];
+
+        console.log(`📚 Available content: ${books.length} books, ${playlists.length} playlists, ${lessons.length} lessons`);
+
+        res.json({
+            success: true,
+            content,
         });
     } catch (error) {
         console.error('Error fetching available content:', error);
@@ -267,4 +229,3 @@ router.get('/available-content', async (req, res) => {
 });
 
 module.exports = router;
-

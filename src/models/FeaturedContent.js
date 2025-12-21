@@ -5,87 +5,60 @@ const mongoose = require('mongoose');
  * Manages curated content shown to new users on their first app experience
  * Controlled via the portal admin panel
  */
+
+const featuredItemSchema = new mongoose.Schema({
+    contentId: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        required: true 
+    },
+    contentType: { 
+        type: String, 
+        enum: ['book', 'playlist', 'lesson'], 
+        required: true 
+    },
+    order: { 
+        type: Number, 
+        default: 0 
+    },
+    // Optional overrides
+    title: String,
+    subtitle: String,
+    imageUrl: String,
+}, { _id: false });
+
 const featuredContentSchema = new mongoose.Schema({
-    // Type of featured content section
+    // Section identifier (e.g., 'new-user-welcome')
     section: {
         type: String,
-        enum: ['new_user_welcome', 'home_featured', 'seasonal'],
-        default: 'new_user_welcome',
         required: true,
-        unique: true, // Only one config per section
+        unique: true,
     },
 
-    // Welcome message shown at top of the screen
-    welcomeTitle: {
+    // Display text
+    title: {
         type: String,
         default: 'Welcome to Godly Kids!',
     },
-    welcomeSubtitle: {
+    subtitle: {
         type: String,
-        default: 'Pick something fun to start your adventure:',
+        default: 'Pick something to start your adventure.',
     },
 
-    // Featured books (references to Book collection)
-    featuredBooks: [{
-        bookId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Book',
-            required: true,
-        },
-        order: {
-            type: Number,
-            default: 0,
-        },
-        customTitle: String, // Optional override title
-        customDescription: String, // Optional short description for new users
-    }],
-
-    // Featured playlists/audiobooks (references to Playlist collection)
-    featuredPlaylists: [{
-        playlistId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Playlist',
-            required: true,
-        },
-        order: {
-            type: Number,
-            default: 0,
-        },
-        customTitle: String,
-        customDescription: String,
-    }],
-
-    // Featured lessons
-    featuredLessons: [{
-        lessonId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Lesson',
-            required: true,
-        },
-        order: {
-            type: Number,
-            default: 0,
-        },
-        customTitle: String,
-        customDescription: String,
-    }],
+    // Featured items (unified array)
+    items: [featuredItemSchema],
 
     // Settings
-    isActive: {
-        type: Boolean,
-        default: true,
+    maxItems: {
+        type: Number,
+        default: 6,
+    },
+    skipButtonText: {
+        type: String,
+        default: 'Skip for now',
     },
     showSkipButton: {
         type: Boolean,
         default: true,
-    },
-    skipButtonText: {
-        type: String,
-        default: 'Explore the App',
-    },
-    maxItemsToShow: {
-        type: Number,
-        default: 6, // Show max 6 items on welcome screen
     },
 
     // Metadata
@@ -97,9 +70,6 @@ const featuredContentSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
     },
-    lastEditedBy: {
-        type: String, // Email of admin who last edited
-    },
 });
 
 // Update timestamp on save
@@ -109,4 +79,3 @@ featuredContentSchema.pre('save', function(next) {
 });
 
 module.exports = mongoose.model('FeaturedContent', featuredContentSchema);
-
