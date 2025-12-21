@@ -20,12 +20,22 @@ const fetchContentDetails = async (item) => {
         const content = await model.findById(item.contentId).lean();
         if (!content) return null;
 
+        // Get image URL based on content type
+        let defaultImageUrl = null;
+        if (item.contentType === 'book') {
+            defaultImageUrl = content.files?.coverImage;
+        } else if (item.contentType === 'playlist') {
+            defaultImageUrl = content.coverImage || content.thumbnailUrl;
+        } else if (item.contentType === 'lesson') {
+            defaultImageUrl = content.thumbnailUrl;
+        }
+
         return {
             _id: content._id,
             type: item.contentType,
             title: item.title || content.title,
             subtitle: item.subtitle || content.subtitle || content.description,
-            imageUrl: item.imageUrl || content.coverImageUrl || content.thumbnailUrl,
+            imageUrl: item.imageUrl || defaultImageUrl,
             order: item.order,
         };
     } catch (err) {
@@ -175,14 +185,14 @@ router.put('/config/:section', async (req, res) => {
  */
 router.get('/available-content', async (req, res) => {
     try {
-        // Get all published books
+        // Get all published books (coverImage is in files.coverImage)
         const books = await Book.find({ status: 'published' })
-            .select('title coverImageUrl isAudio categories')
+            .select('title files.coverImage isAudio categories')
             .sort({ title: 1 });
 
         // Get all published playlists
         const playlists = await Playlist.find({ status: 'published' })
-            .select('title coverImageUrl thumbnailUrl type')
+            .select('title coverImage thumbnailUrl type')
             .sort({ title: 1 });
 
         // Get all published lessons
@@ -195,19 +205,19 @@ router.get('/available-content', async (req, res) => {
             ...books.map(b => ({
                 _id: b._id,
                 title: b.title,
-                imageUrl: b.coverImageUrl,
+                imageUrl: b.files?.coverImage || null,
                 type: 'book',
             })),
             ...playlists.map(p => ({
                 _id: p._id,
                 title: p.title,
-                imageUrl: p.coverImageUrl || p.thumbnailUrl,
+                imageUrl: p.coverImage || p.thumbnailUrl || null,
                 type: 'playlist',
             })),
             ...lessons.map(l => ({
                 _id: l._id,
                 title: l.title,
-                imageUrl: l.thumbnailUrl,
+                imageUrl: l.thumbnailUrl || null,
                 type: 'lesson',
             })),
         ];
