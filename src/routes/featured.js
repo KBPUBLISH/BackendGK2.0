@@ -109,8 +109,19 @@ router.get('/config/:section', async (req, res) => {
 
         if (!config) {
             // Create a default config if it doesn't exist
-            config = await FeaturedContent.create({ section });
-            config = config.toObject();
+            console.log(`Creating new FeaturedContent config for section: ${section}`);
+            const newConfig = new FeaturedContent({ 
+                section,
+                title: 'Welcome to Godly Kids!',
+                subtitle: 'Pick something to start your adventure.',
+                items: [],
+                maxItems: 6,
+                skipButtonText: 'Skip for now',
+                showSkipButton: true,
+            });
+            await newConfig.save();
+            config = newConfig.toObject();
+            console.log(`Created config:`, config);
         }
 
         // Populate item details for display in portal
@@ -132,7 +143,8 @@ router.get('/config/:section', async (req, res) => {
         });
     } catch (error) {
         console.error(`Error fetching featured config for ${req.params.section}:`, error);
-        res.status(500).json({ success: false, message: 'Failed to fetch featured config' });
+        console.error('Full error:', error.stack || error);
+        res.status(500).json({ success: false, message: 'Failed to fetch featured config', error: error.message });
     }
 });
 
