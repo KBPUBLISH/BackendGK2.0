@@ -455,7 +455,7 @@ router.post('/profile/save', async (req, res) => {
         // Update kid profiles (full replacement)
         if (kids && Array.isArray(kids)) {
             user.kidProfiles = kids.map(kid => ({
-                _id: kid.id || kid._id,
+                frontendId: kid.id || kid._id || kid.frontendId,
                 name: kid.name,
                 age: kid.age,
                 avatar: kid.avatar,
