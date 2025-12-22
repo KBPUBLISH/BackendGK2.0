@@ -11,10 +11,31 @@ const PRICE_IDS = {
 };
 
 /**
+ * GET /api/stripe/create-checkout-session
+ * Info endpoint - tells users to use POST
+ */
+router.get('/create-checkout-session', (req, res) => {
+  res.json({ 
+    message: 'Stripe checkout endpoint is working! Use POST method with: plan, userId, email, successUrl, cancelUrl',
+    method: 'POST required',
+    example: {
+      plan: 'annual or monthly',
+      userId: 'user-id',
+      email: 'user@example.com',
+      successUrl: 'https://app.godlykids.com/#/payment-success',
+      cancelUrl: 'https://app.godlykids.com/#/paywall'
+    }
+  });
+});
+
+/**
  * POST /api/stripe/create-checkout-session
  * Creates a Stripe Checkout session for web purchases
  */
 router.post('/create-checkout-session', async (req, res) => {
+  console.log('🛒 Stripe create-checkout-session called');
+  console.log('   Body:', JSON.stringify(req.body));
+  
   try {
     const { plan, userId, email, successUrl, cancelUrl } = req.body;
 
