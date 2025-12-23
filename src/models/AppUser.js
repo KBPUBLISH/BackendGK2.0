@@ -157,6 +157,19 @@ const appUserSchema = new mongoose.Schema({
         index: true,
     },
     
+    // Email notification signup (for anonymous users interested in launch updates)
+    notificationEmail: {
+        type: String,
+        sparse: true,
+        index: true,
+    },
+    emailSignupSource: {
+        type: String, // 'web_popup', 'landing_page', etc.
+    },
+    emailSignupAt: {
+        type: Date,
+    },
+    
     // Usage statistics (aggregate counters for quick access)
     stats: {
         totalSessions: {

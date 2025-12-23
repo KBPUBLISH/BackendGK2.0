@@ -597,5 +597,95 @@ router.get('/admin/list', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/referrals/email-signup
+ * Save notification email for anonymous users who want launch updates
+ */
+router.post('/email-signup', async (req, res) => {
+    try {
+        const { deviceId, email, source } = req.body;
+
+        if (!email || !email.includes('@')) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Valid email is required' 
+            });
+        }
+
+        const cleanEmail = email.toLowerCase().trim();
+
+        // Find or create user by deviceId
+        let user = null;
+        if (deviceId) {
+            user = await AppUser.findOne({ deviceId });
+        }
+
+        if (user) {
+            // Update existing user with notification email
+            user.notificationEmail = cleanEmail;
+            user.emailSignupSource = source || 'web_popup';
+            user.emailSignupAt = new Date();
+            await user.save();
+            console.log(`📧 Email signup updated for existing user: ${deviceId} -> ${cleanEmail}`);
+        } else {
+            // Create new user with just the notification email
+            user = await AppUser.create({
+                deviceId: deviceId || `email_signup_${Date.now()}`,
+                notificationEmail: cleanEmail,
+                emailSignupSource: source || 'web_popup',
+                emailSignupAt: new Date(),
+                platform: 'web',
+            });
+            console.log(`📧 New email signup created: ${cleanEmail}`);
+        }
+
+        return res.json({ 
+            success: true, 
+            message: 'Email saved successfully',
+            email: cleanEmail
+        });
+
+    } catch (error) {
+        console.error('Email signup error:', error);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Failed to save email',
+            error: error.message 
+        });
+    }
+});
+
+/**
+ * GET /api/referrals/email-signups
+ * List all email signups (for admin dashboard)
+ */
+router.get('/email-signups', async (req, res) => {
+    try {
+        const users = await AppUser.find(
+            { notificationEmail: { $exists: true, $ne: null } },
+            { notificationEmail: 1, emailSignupSource: 1, emailSignupAt: 1, deviceId: 1, createdAt: 1 }
+        ).sort({ emailSignupAt: -1 }).limit(100);
+
+        return res.json({ 
+            success: true, 
+            count: users.length,
+            signups: users.map(u => ({
+                email: u.notificationEmail,
+                source: u.emailSignupSource || 'unknown',
+                signedUpAt: u.emailSignupAt || u.createdAt,
+                deviceId: u.deviceId ? u.deviceId.substring(0, 15) + '...' : 'N/A'
+            }))
+        });
+
+    } catch (error) {
+        console.error('List email signups error:', error);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Failed to list email signups',
+            error: error.message 
+        });
+    }
+});
+
 module.exports = router;
 
