@@ -184,8 +184,16 @@ const appUserSchema = new mongoose.Schema({
             type: Number,
             default: 0,
         },
+        pagesRead: {
+            type: Number, // Total pages read across all books
+            default: 0,
+        },
         playlistsPlayed: {
             type: Number,
+            default: 0,
+        },
+        audioListeningTime: {
+            type: Number, // Total seconds spent listening to audio
             default: 0,
         },
         lessonsCompleted: {
@@ -203,6 +211,15 @@ const appUserSchema = new mongoose.Schema({
         gamesPlayed: {
             type: Number,
             default: 0,
+        },
+        // Onboarding progress tracking
+        onboardingStep: {
+            type: Number, // Last onboarding step reached (0-5)
+            default: 0,
+        },
+        farthestPageReached: {
+            type: String, // Deepest page path the user visited
+            default: '/',
         },
     },
     

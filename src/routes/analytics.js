@@ -7,9 +7,14 @@ const User = require('../models/User');
  * GET /api/analytics/users
  * Get comprehensive user analytics for the dashboard
  * Merges data from both User (auth) and AppUser (app data) collections
+ * 
+ * Query params:
+ *   sortBy: 'createdAt' (default) | 'lastActiveAt' | 'sessions' | 'coins'
+ *   sortOrder: 'desc' (default) | 'asc'
  */
 router.get('/users', async (req, res) => {
     try {
+        const { sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekStart = new Date(todayStart);
@@ -19,7 +24,7 @@ router.get('/users', async (req, res) => {
 
         // Get users from AppUser collection (app-specific data)
         const appUsers = await AppUser.find({})
-            .select('email deviceId coins kidProfiles stats createdAt lastActiveAt subscriptionStatus platform referralCode referralCount')
+            .select('email deviceId coins kidProfiles stats createdAt lastActiveAt subscriptionStatus platform referralCode referralCount notificationEmail emailSignupAt parentName')
             .sort({ createdAt: -1 })
             .lean();
 
@@ -57,6 +62,8 @@ router.get('/users', async (req, res) => {
                 platform: appData?.platform || 'unknown',
                 referralCode: appData?.referralCode,
                 referralCount: appData?.referralCount || 0,
+                notificationEmail: appData?.notificationEmail,
+                parentName: appData?.parentName,
                 createdAt: authUser.createdAt,
                 lastActiveAt: appData?.lastActiveAt || authUser.updatedAt,
                 source: 'auth', // Track where this user came from
@@ -81,14 +88,56 @@ router.get('/users', async (req, res) => {
                 platform: appUser.platform || 'unknown',
                 referralCode: appUser.referralCode,
                 referralCount: appUser.referralCount || 0,
+                notificationEmail: appUser.notificationEmail,
+                parentName: appUser.parentName,
                 createdAt: appUser.createdAt,
                 lastActiveAt: appUser.lastActiveAt,
                 source: 'app', // Anonymous or app-only user
             });
         });
 
-        // Sort by createdAt descending
-        mergedUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        // Helper to safely parse dates (returns 0 for invalid dates so they sort to the end)
+        const safeDate = (dateVal) => {
+            if (!dateVal) return 0;
+            const d = new Date(dateVal);
+            return isNaN(d.getTime()) ? 0 : d.getTime();
+        };
+
+        // Dynamic sorting based on query params
+        const isAsc = sortOrder === 'asc';
+        mergedUsers.sort((a, b) => {
+            let valA, valB;
+            
+            switch (sortBy) {
+                case 'lastActiveAt':
+                    valA = safeDate(a.lastActiveAt);
+                    valB = safeDate(b.lastActiveAt);
+                    break;
+                case 'sessions':
+                    valA = a.stats?.totalSessions || 0;
+                    valB = b.stats?.totalSessions || 0;
+                    break;
+                case 'coins':
+                    valA = a.coins || 0;
+                    valB = b.coins || 0;
+                    break;
+                case 'createdAt':
+                default:
+                    valA = safeDate(a.createdAt);
+                    valB = safeDate(b.createdAt);
+                    break;
+            }
+            
+            // For date fields, push invalid/missing to the end
+            if (sortBy === 'createdAt' || sortBy === 'lastActiveAt') {
+                if (valA === 0 && valB === 0) return 0;
+                if (valA === 0) return 1;  // Push A to end
+                if (valB === 0) return -1; // Push B to end
+            }
+            
+            // Sort ascending or descending
+            return isAsc ? valA - valB : valB - valA;
+        });
 
         const allUsers = mergedUsers;
 
@@ -123,8 +172,21 @@ router.get('/users', async (req, res) => {
         const totalCoins = allUsers.reduce((sum, u) => sum + (u.coins || 0), 0);
         const totalKids = allUsers.reduce((sum, u) => sum + (u.kidProfiles?.length || 0), 0);
         const totalSessions = allUsers.reduce((sum, u) => sum + (u.stats?.totalSessions || 0), 0);
+        const totalTimeSpentMinutes = Math.round(allUsers.reduce((sum, u) => sum + (u.stats?.totalTimeSpent || 0), 0) / 60);
         const totalBooksRead = allUsers.reduce((sum, u) => sum + (u.stats?.booksRead || 0), 0);
+        const totalPagesRead = allUsers.reduce((sum, u) => sum + (u.stats?.pagesRead || 0), 0);
+        const totalPlaylistsPlayed = allUsers.reduce((sum, u) => sum + (u.stats?.playlistsPlayed || 0), 0);
+        const totalListeningTimeMinutes = Math.round(allUsers.reduce((sum, u) => sum + (u.stats?.audioListeningTime || 0), 0) / 60);
+        const totalLessonsCompleted = allUsers.reduce((sum, u) => sum + (u.stats?.lessonsCompleted || 0), 0);
         const totalGamesPlayed = allUsers.reduce((sum, u) => sum + (u.stats?.gamesPlayed || 0), 0);
+
+        // Helper to format dates safely
+        const formatDate = (dateVal) => {
+            if (!dateVal) return null;
+            const d = new Date(dateVal);
+            if (isNaN(d.getTime())) return null;
+            return d.toISOString();
+        };
 
         // Format users for display
         const formattedUsers = allUsers.map(user => ({
@@ -135,15 +197,31 @@ router.get('/users', async (req, res) => {
             coins: user.coins || 0,
             kidCount: user.kidProfiles?.length || 0,
             kids: user.kidProfiles?.map(k => ({ name: k.name, age: k.age })) || [],
+            // Activity stats
             sessions: user.stats?.totalSessions || 0,
+            timeSpentMinutes: Math.round((user.stats?.totalTimeSpent || 0) / 60),
             booksRead: user.stats?.booksRead || 0,
+            pagesRead: user.stats?.pagesRead || 0,
+            playlistsPlayed: user.stats?.playlistsPlayed || 0,
+            listeningTimeMinutes: Math.round((user.stats?.audioListeningTime || 0) / 60),
+            lessonsCompleted: user.stats?.lessonsCompleted || 0,
             gamesPlayed: user.stats?.gamesPlayed || 0,
+            // Progress tracking
+            onboardingStep: user.stats?.onboardingStep || 0,
+            farthestPage: user.stats?.farthestPageReached || '/',
+            // Account info
             subscriptionStatus: user.subscriptionStatus || 'free',
             platform: user.platform || 'unknown',
             referralCode: user.referralCode,
             referralCount: user.referralCount || 0,
-            createdAt: user.createdAt,
-            lastActiveAt: user.lastActiveAt,
+            notificationEmail: user.notificationEmail || null,
+            parentName: user.parentName || null,
+            // Dates - formatted as ISO strings for consistent sorting
+            createdAt: formatDate(user.createdAt),
+            lastActiveAt: formatDate(user.lastActiveAt),
+            // Sortable timestamps (milliseconds) for frontend sorting
+            createdAtMs: safeDate(user.createdAt),
+            lastActiveAtMs: safeDate(user.lastActiveAt),
             source: user.source, // 'auth' = has login account, 'app' = anonymous/app-only
         }));
 
@@ -198,7 +276,12 @@ router.get('/users', async (req, res) => {
                 totalCoins,
                 totalKids,
                 totalSessions,
+                totalTimeSpentMinutes,
                 totalBooksRead,
+                totalPagesRead,
+                totalPlaylistsPlayed,
+                totalListeningTimeMinutes,
+                totalLessonsCompleted,
                 totalGamesPlayed,
             },
             newAccounts: {
@@ -266,10 +349,14 @@ router.post('/sync-stats', async (req, res) => {
                 totalSessions: Math.max(user.stats?.totalSessions || 0, stats.totalSessions || 0),
                 totalTimeSpent: Math.max(user.stats?.totalTimeSpent || 0, stats.totalTimeSpent || 0),
                 booksRead: Math.max(user.stats?.booksRead || 0, stats.booksRead || 0),
+                pagesRead: Math.max(user.stats?.pagesRead || 0, stats.pagesRead || 0),
                 playlistsPlayed: Math.max(user.stats?.playlistsPlayed || 0, stats.playlistsPlayed || 0),
+                audioListeningTime: Math.max(user.stats?.audioListeningTime || 0, stats.audioListeningTime || 0),
                 lessonsCompleted: Math.max(user.stats?.lessonsCompleted || 0, stats.lessonsCompleted || 0),
                 gamesPlayed: Math.max(user.stats?.gamesPlayed || 0, stats.gamesPlayed || 0),
                 coloringSessions: Math.max(user.stats?.coloringSessions || 0, stats.coloringSessions || 0),
+                onboardingStep: Math.max(user.stats?.onboardingStep || 0, stats.onboardingStep || 0),
+                farthestPageReached: stats.farthestPageReached || user.stats?.farthestPageReached || '/',
             };
             user.lastActiveAt = new Date();
         }
