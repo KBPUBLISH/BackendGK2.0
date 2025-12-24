@@ -1,13 +1,23 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Page = require('../models/Page');
 
 // GET all pages for a book
 router.get('/book/:bookId', async (req, res) => {
     try {
-        const pages = await Page.find({ bookId: req.params.bookId }).sort({ pageNumber: 1 });
+        const { bookId } = req.params;
+        
+        // Validate that bookId is a valid MongoDB ObjectId
+        if (!mongoose.Types.ObjectId.isValid(bookId)) {
+            console.log(`⚠️ Invalid bookId format: ${bookId} (expected MongoDB ObjectId)`);
+            return res.json([]); // Return empty array for invalid IDs instead of error
+        }
+        
+        const pages = await Page.find({ bookId }).sort({ pageNumber: 1 });
         res.json(pages);
     } catch (error) {
+        console.error('❌ Error fetching pages:', error.message);
         res.status(500).json({ message: error.message });
     }
 });
