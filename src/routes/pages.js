@@ -24,7 +24,12 @@ router.post('/', async (req, res) => {
         backgroundType: req.body.backgroundType,
         scrollUrl: req.body.scrollUrl,
         scrollHeight: req.body.scrollHeight,
+        scrollMidHeight: req.body.scrollMidHeight,
+        soundEffectUrl: req.body.soundEffectUrl,
         textBoxes: req.body.textBoxes,
+        // Coloring page settings
+        isColoringPage: req.body.isColoringPage || false,
+        coloringEndModalOnly: req.body.coloringEndModalOnly !== false, // Default to true (end modal only)
     });
 
     try {

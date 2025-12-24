@@ -95,6 +95,8 @@ const pageSchema = new mongoose.Schema({
     backgroundType: { type: String, enum: ['image', 'video'] },
     scrollUrl: { type: String },
     scrollHeight: { type: Number },
+    scrollMidHeight: { type: Number }, // Mid scroll height % (app uses this)
+    scrollMaxHeight: { type: Number }, // Max scroll height %
     soundEffectUrl: { type: String }, // URL for sound effect bubble audio
     // Legacy textBoxes at root level (portal sends here, new schema uses content.textBoxes)
     textBoxes: [{
