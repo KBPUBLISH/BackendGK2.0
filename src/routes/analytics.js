@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const AppUser = require('../models/AppUser');
 const User = require('../models/User');
+const OnboardingEvent = require('../models/OnboardingEvent');
 
 /**
  * GET /api/analytics/users
@@ -417,6 +418,155 @@ router.get('/users/:userId', async (req, res) => {
         res.status(500).json({ 
             success: false, 
             message: 'Failed to fetch user details',
+            error: error.message 
+        });
+    }
+});
+
+/**
+ * POST /api/analytics/onboarding/event
+ * Track an onboarding event from the app
+ */
+router.post('/onboarding/event', async (req, res) => {
+    try {
+        const { userId, sessionId, event, metadata } = req.body;
+        
+        if (!userId || !event) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'userId and event are required' 
+            });
+        }
+        
+        const onboardingEvent = new OnboardingEvent({
+            userId,
+            sessionId: sessionId || `session_${Date.now()}`,
+            event,
+            metadata: metadata || {},
+        });
+        
+        await onboardingEvent.save();
+        
+        console.log(`📊 Onboarding event: ${event} for user ${userId}`);
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Onboarding event tracking error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to track event',
+            error: error.message 
+        });
+    }
+});
+
+/**
+ * GET /api/analytics/onboarding
+ * Get onboarding funnel analytics for the portal
+ * 
+ * Query params:
+ *   days: number of days to look back (default 30)
+ */
+router.get('/onboarding', async (req, res) => {
+    try {
+        const days = parseInt(req.query.days) || 30;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        
+        // Get all events in the time range
+        const events = await OnboardingEvent.find({
+            createdAt: { $gte: startDate }
+        }).lean();
+        
+        // Calculate funnel metrics
+        const uniqueUsers = new Set(events.map(e => e.userId));
+        const uniqueSessions = new Set(events.map(e => e.sessionId));
+        
+        // Count events by type
+        const eventCounts = {};
+        const eventsByDay = {};
+        
+        events.forEach(e => {
+            // Count by event type
+            eventCounts[e.event] = (eventCounts[e.event] || 0) + 1;
+            
+            // Count by day
+            const day = e.createdAt.toISOString().split('T')[0];
+            if (!eventsByDay[day]) {
+                eventsByDay[day] = {};
+            }
+            eventsByDay[day][e.event] = (eventsByDay[day][e.event] || 0) + 1;
+        });
+        
+        // Calculate conversion rates
+        const started = eventCounts['onboarding_started'] || 0;
+        const step1 = eventCounts['step_1_complete'] || 0;
+        const step2 = eventCounts['step_2_complete'] || 0;
+        const step3 = eventCounts['step_3_complete'] || 0;
+        const paywallViewed = eventCounts['step_4_viewed'] || 0;
+        const subscribeClicked = eventCounts['subscribe_clicked'] || 0;
+        const subscriptionStarted = eventCounts['subscription_started'] || 0;
+        const trialStarted = eventCounts['trial_started'] || 0;
+        const skipped = eventCounts['skip_clicked'] || 0;
+        const completed = eventCounts['onboarding_complete'] || 0;
+        
+        // Build funnel data
+        const funnel = [
+            { step: 'Started', count: started, rate: 100 },
+            { step: 'Step 1 (Welcome)', count: step1, rate: started > 0 ? Math.round((step1 / started) * 100) : 0 },
+            { step: 'Step 2 (Kids)', count: step2, rate: started > 0 ? Math.round((step2 / started) * 100) : 0 },
+            { step: 'Step 3 (Voice)', count: step3, rate: started > 0 ? Math.round((step3 / started) * 100) : 0 },
+            { step: 'Paywall Viewed', count: paywallViewed, rate: started > 0 ? Math.round((paywallViewed / started) * 100) : 0 },
+            { step: 'Subscribe Clicked', count: subscribeClicked, rate: started > 0 ? Math.round((subscribeClicked / started) * 100) : 0 },
+            { step: 'Subscribed', count: subscriptionStarted + trialStarted, rate: started > 0 ? Math.round(((subscriptionStarted + trialStarted) / started) * 100) : 0 },
+        ];
+        
+        // Daily trends (last 14 days)
+        const dailyTrends = [];
+        for (let i = 13; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            const dayStr = date.toISOString().split('T')[0];
+            const dayData = eventsByDay[dayStr] || {};
+            
+            dailyTrends.push({
+                date: dayStr,
+                started: dayData['onboarding_started'] || 0,
+                completed: dayData['onboarding_complete'] || 0,
+                subscribed: (dayData['subscription_started'] || 0) + (dayData['trial_started'] || 0),
+                skipped: dayData['skip_clicked'] || 0,
+            });
+        }
+        
+        // Plan preference
+        const planEvents = events.filter(e => e.event === 'plan_selected');
+        const planCounts = { annual: 0, monthly: 0 };
+        planEvents.forEach(e => {
+            if (e.metadata?.planType) {
+                planCounts[e.metadata.planType] = (planCounts[e.metadata.planType] || 0) + 1;
+            }
+        });
+        
+        res.json({
+            success: true,
+            period: { days, startDate: startDate.toISOString() },
+            summary: {
+                totalUsers: uniqueUsers.size,
+                totalSessions: uniqueSessions.size,
+                totalEvents: events.length,
+                conversionRate: started > 0 ? Math.round(((subscriptionStarted + trialStarted) / started) * 100) : 0,
+                skipRate: started > 0 ? Math.round((skipped / started) * 100) : 0,
+            },
+            funnel,
+            eventCounts,
+            dailyTrends,
+            planPreference: planCounts,
+        });
+    } catch (error) {
+        console.error('Onboarding analytics error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to fetch onboarding analytics',
             error: error.message 
         });
     }
