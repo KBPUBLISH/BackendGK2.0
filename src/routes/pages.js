@@ -35,6 +35,8 @@ router.post('/', async (req, res) => {
         scrollUrl: req.body.scrollUrl,
         scrollHeight: req.body.scrollHeight,
         scrollMidHeight: req.body.scrollMidHeight,
+        scrollMaxHeight: req.body.scrollMaxHeight,
+        scrollOffsetY: req.body.scrollOffsetY || 0,
         soundEffectUrl: req.body.soundEffectUrl,
         textBoxes: req.body.textBoxes,
         // Coloring page settings

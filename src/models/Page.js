@@ -115,6 +115,7 @@ const pageSchema = new mongoose.Schema({
     scrollHeight: { type: Number },
     scrollMidHeight: { type: Number }, // Mid scroll height % (app uses this)
     scrollMaxHeight: { type: Number }, // Max scroll height %
+    scrollOffsetY: { type: Number, default: 0 }, // Vertical offset from bottom in percentage (positive = higher)
     soundEffectUrl: { type: String }, // URL for sound effect bubble audio
     // Legacy textBoxes at root level (portal sends here, new schema uses content.textBoxes)
     textBoxes: [{

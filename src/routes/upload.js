@@ -355,12 +355,14 @@ router.post('/video', (req, res, next) => {
                 }
             } else {
                 // Validate type for books
-                if (!['pages', 'scroll', 'video', 'sequence'].includes(type)) {
-                    return res.status(400).json({ message: 'type must be one of: pages, scroll, video, sequence' });
+                if (!['pages', 'scroll', 'video', 'sequence', 'intro'].includes(type)) {
+                    return res.status(400).json({ message: 'type must be one of: pages, scroll, video, sequence, intro' });
                 }
                 // Generate organized file path for books
-                // For sequence videos, use 'video-sequence' folder
-                const folderType = type === 'sequence' ? 'video-sequence' : type;
+                // For sequence videos, use 'video-sequence' folder; for intro videos, use 'intro' folder
+                let folderType = type;
+                if (type === 'sequence') folderType = 'video-sequence';
+                else if (type === 'intro') folderType = 'intro';
                 filePath = generateFilePath(bookId, folderType, req.file.originalname, pageNumber);
             }
         } else {
