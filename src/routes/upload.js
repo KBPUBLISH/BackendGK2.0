@@ -355,11 +355,13 @@ router.post('/video', (req, res, next) => {
                 }
             } else {
                 // Validate type for books
-                if (!['pages', 'scroll', 'video'].includes(type)) {
-                    return res.status(400).json({ message: 'type must be one of: pages, scroll, video' });
+                if (!['pages', 'scroll', 'video', 'sequence'].includes(type)) {
+                    return res.status(400).json({ message: 'type must be one of: pages, scroll, video, sequence' });
                 }
                 // Generate organized file path for books
-                filePath = generateFilePath(bookId, type, req.file.originalname, pageNumber);
+                // For sequence videos, use 'video-sequence' folder
+                const folderType = type === 'sequence' ? 'video-sequence' : type;
+                filePath = generateFilePath(bookId, folderType, req.file.originalname, pageNumber);
             }
         } else {
             // Fallback to simple structure for backward compatibility
