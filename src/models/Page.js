@@ -66,10 +66,18 @@ const pageSchema = new mongoose.Schema({
             uploadedAt: { type: Date, default: Date.now },
         }],
 
-        // Page-specific videos
+        // Page-specific videos (legacy - single videos)
         videos: [{
             url: { type: String }, // URL to GCS: books/{bookId}/pages/videos/filename
             filename: { type: String },
+            uploadedAt: { type: Date, default: Date.now },
+        }],
+        
+        // Video sequence - multiple videos that play in order
+        videoSequence: [{
+            url: { type: String, required: true }, // URL to GCS
+            filename: { type: String },
+            order: { type: Number, required: true }, // 1, 2, 3, etc.
             uploadedAt: { type: Date, default: Date.now },
         }],
 
@@ -88,6 +96,16 @@ const pageSchema = new mongoose.Schema({
         },
     },
 
+    // Video sequence at root level (for easier access)
+    videoSequence: [{
+        url: { type: String, required: true },
+        filename: { type: String },
+        order: { type: Number, required: true },
+        uploadedAt: { type: Date, default: Date.now },
+    }],
+    // Flag to use video sequence instead of single background video
+    useVideoSequence: { type: Boolean, default: false },
+    
     // Legacy fields (for backward compatibility)
     imageUrl: { type: String },
     audioUrl: { type: String },

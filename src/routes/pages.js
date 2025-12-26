@@ -40,6 +40,9 @@ router.post('/', async (req, res) => {
         // Coloring page settings
         isColoringPage: req.body.isColoringPage || false,
         coloringEndModalOnly: req.body.coloringEndModalOnly !== false, // Default to true (end modal only)
+        // Video sequence settings
+        videoSequence: req.body.videoSequence || [],
+        useVideoSequence: req.body.useVideoSequence || false,
     });
 
     try {
