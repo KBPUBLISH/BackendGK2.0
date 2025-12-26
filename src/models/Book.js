@@ -250,6 +250,12 @@ const bookSchema = new mongoose.Schema({
         default: [],
     },
     
+    // Intro video (studio logo animation) - plays before book starts
+    introVideoUrl: {
+        type: String,
+        default: null,
+    },
+    
     createdAt: {
         type: Date,
         default: Date.now,
