@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Translation = require('../models/Translation');
 const Page = require('../models/Page');
 
@@ -105,6 +106,20 @@ router.get('/page/:pageId', async (req, res) => {
             return res.status(400).json({ 
                 message: `Unsupported language: ${lang}`,
                 supportedLanguages: Object.keys(SUPPORTED_LANGUAGES)
+            });
+        }
+        
+        // Handle synthetic pages (like "the-end-page") that don't exist in DB
+        // These are created client-side and have no text to translate
+        if (pageId === 'the-end-page' || !mongoose.Types.ObjectId.isValid(pageId)) {
+            console.log(`📄 Skipping translation for synthetic page: ${pageId}`);
+            return res.json({
+                pageId,
+                languageCode: lang,
+                translatedText: '',
+                translatedTextBoxes: [],
+                isOriginal: true,
+                isSynthetic: true,
             });
         }
         
