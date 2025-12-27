@@ -129,11 +129,15 @@ router.get('/page/:pageId', async (req, res) => {
             if (!page) {
                 return res.status(404).json({ message: 'Page not found' });
             }
+            // Check both locations for textBoxes
+            const sourceTextBoxes = (page.content?.textBoxes && page.content.textBoxes.length > 0) 
+                ? page.content.textBoxes 
+                : page.textBoxes;
             return res.json({
                 pageId,
                 languageCode: 'en',
                 translatedText: page.content?.text || '',
-                translatedTextBoxes: page.content?.textBoxes?.map((tb, i) => ({
+                translatedTextBoxes: sourceTextBoxes?.map((tb, i) => ({
                     textBoxIndex: i,
                     originalText: tb.text,
                     translatedText: tb.text,
@@ -151,10 +155,13 @@ router.get('/page/:pageId', async (req, res) => {
             return res.status(404).json({ message: 'Page not found' });
         }
         
-        // Generate hash of current original content
+        // Generate hash of current original content - check both textBoxes locations
+        const pageTextBoxes = (page.content?.textBoxes && page.content.textBoxes.length > 0) 
+            ? page.content.textBoxes 
+            : page.textBoxes;
         const currentHash = generateHash(
             (page.content?.text || '') + 
-            (page.content?.textBoxes?.map(tb => tb.text).join('') || '')
+            (pageTextBoxes?.map(tb => tb.text).join('') || '')
         );
         
         // If translation exists and original hasn't changed, return cached
@@ -169,18 +176,26 @@ router.get('/page/:pageId', async (req, res) => {
         // Translate main text
         const translatedText = await translateText(page.content?.text || '', lang);
         
-        // Translate text boxes
+        // Translate text boxes - check both locations (content.textBoxes and root textBoxes)
         const translatedTextBoxes = [];
-        if (page.content?.textBoxes && page.content.textBoxes.length > 0) {
-            for (let i = 0; i < page.content.textBoxes.length; i++) {
-                const tb = page.content.textBoxes[i];
+        const sourceTextBoxes = (page.content?.textBoxes && page.content.textBoxes.length > 0) 
+            ? page.content.textBoxes 
+            : page.textBoxes;
+            
+        if (sourceTextBoxes && sourceTextBoxes.length > 0) {
+            console.log(`📝 Found ${sourceTextBoxes.length} text boxes to translate`);
+            for (let i = 0; i < sourceTextBoxes.length; i++) {
+                const tb = sourceTextBoxes[i];
                 const translatedTbText = await translateText(tb.text || '', lang);
                 translatedTextBoxes.push({
                     textBoxIndex: i,
                     originalText: tb.text,
                     translatedText: translatedTbText,
                 });
+                console.log(`  ✅ Box ${i + 1}: "${tb.text?.substring(0, 30)}..." → "${translatedTbText?.substring(0, 30)}..."`);
             }
+        } else {
+            console.log(`⚠️ No text boxes found for page ${pageId}`);
         }
         
         // Save or update translation cache
