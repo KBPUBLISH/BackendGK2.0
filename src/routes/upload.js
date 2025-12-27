@@ -580,6 +580,7 @@ router.post('/audio', upload.single('file'), async (req, res) => {
 // Reprocess an existing book background music file (no re-upload)
 // POST /api/upload/audio/reprocess?bookId=...&index=0&volume=0.2
 router.post('/audio/reprocess', async (req, res) => {
+    console.log('🎵 Audio reprocess request received:', { bookId: req.query.bookId, index: req.query.index, volume: req.query.volume });
     try {
         const { bookId } = req.query;
         const indexRaw = req.query.index;
@@ -616,16 +617,20 @@ router.post('/audio/reprocess', async (req, res) => {
         }
 
         // Fetch source audio
+        console.log('🎵 Fetching audio from:', currentUrl);
         const fetched = await fetchAudioBufferByUrl(currentUrl);
+        console.log('🎵 Fetched audio:', fetched.buffer.length, 'bytes from', fetched.source);
         const currentFilename = current.filename || `book-audio-${index}.mp3`;
         const currentExt = path.extname(currentFilename).toLowerCase() || '.mp3';
 
         // Process volume to mp3
+        console.log('🎵 Processing audio with volume:', volume, '(', Math.round(volume * 100), '%)');
         const processed = await processAudioVolumeToMp3({
             inputBuffer: fetched.buffer,
             inputExt: currentExt,
             volume,
         });
+        console.log('🎵 Processed audio:', processed.buffer.length, 'bytes');
 
         const baseName = path.basename(currentFilename, currentExt);
         const newFilename = `${baseName}_vol${Math.round(volume * 100)}.mp3`;
@@ -659,6 +664,8 @@ router.post('/audio/reprocess', async (req, res) => {
         };
         await book.save();
 
+        console.log('🎵 Audio reprocess COMPLETE:', { newUrl, newFilename, volume: Math.round(volume * 100) + '%' });
+        
         res.status(200).json({
             url: newUrl,
             path: newPath,
