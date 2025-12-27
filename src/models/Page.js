@@ -106,6 +106,18 @@ const pageSchema = new mongoose.Schema({
     // Flag to use video sequence instead of single background video
     useVideoSequence: { type: Boolean, default: false },
     
+    // Image sequence - multiple images that cycle with transitions
+    imageSequence: [{
+        url: { type: String, required: true },
+        filename: { type: String },
+        order: { type: Number, required: true },
+        uploadedAt: { type: Date, default: Date.now },
+    }],
+    // Flag to use image sequence instead of single background image
+    useImageSequence: { type: Boolean, default: false },
+    // Duration each image shows (in seconds)
+    imageSequenceDuration: { type: Number, default: 3 },
+    
     // Legacy fields (for backward compatibility)
     imageUrl: { type: String },
     audioUrl: { type: String },

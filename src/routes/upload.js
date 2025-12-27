@@ -232,8 +232,8 @@ router.post('/image', upload.single('file'), async (req, res) => {
         // Check if using organized structure
         if (bookId && type) {
             // Validate type
-            if (!['cover', 'pages', 'scroll', 'audio', 'game-cover', 'thumbnail', 'character'].includes(type)) {
-                return res.status(400).json({ message: 'type must be one of: cover, pages, scroll, audio, game-cover, thumbnail, character' });
+            if (!['cover', 'pages', 'scroll', 'audio', 'game-cover', 'thumbnail', 'character', 'image-sequence'].includes(type)) {
+                return res.status(400).json({ message: 'type must be one of: cover, pages, scroll, audio, game-cover, thumbnail, character, image-sequence' });
             }
             
             // Special handling for lessons
