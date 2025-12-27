@@ -572,4 +572,53 @@ router.get('/onboarding', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/analytics/admin/add-coins
+ * Add coins to a user by email (admin only)
+ */
+router.post('/admin/add-coins', async (req, res) => {
+    try {
+        const { email, coins } = req.body;
+        
+        if (!email || !coins) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email and coins are required' 
+            });
+        }
+
+        // Find user in AppUser collection
+        const appUser = await AppUser.findOne({ 
+            email: { $regex: new RegExp(`^${email}$`, 'i') } 
+        });
+
+        if (!appUser) {
+            return res.status(404).json({ 
+                success: false, 
+                message: `User with email ${email} not found` 
+            });
+        }
+
+        const previousCoins = appUser.coins || 0;
+        appUser.coins = previousCoins + coins;
+        await appUser.save();
+
+        console.log(`💰 Added ${coins} coins to ${email}. Previous: ${previousCoins}, New: ${appUser.coins}`);
+
+        res.json({
+            success: true,
+            message: `Added ${coins} coins to ${email}`,
+            previousCoins,
+            newTotal: appUser.coins,
+        });
+    } catch (error) {
+        console.error('Add coins error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to add coins',
+            error: error.message 
+        });
+    }
+});
+
 module.exports = router;
