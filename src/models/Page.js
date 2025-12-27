@@ -117,6 +117,8 @@ const pageSchema = new mongoose.Schema({
     useImageSequence: { type: Boolean, default: false },
     // Duration each image shows (in seconds)
     imageSequenceDuration: { type: Number, default: 3 },
+    // Animation effect for image sequence: 'none', 'panLeft', 'panRight', 'panUp', 'panDown', 'zoomIn', 'zoomOut', 'kenBurns'
+    imageSequenceAnimation: { type: String, default: 'kenBurns' },
     
     // Legacy fields (for backward compatibility)
     imageUrl: { type: String },

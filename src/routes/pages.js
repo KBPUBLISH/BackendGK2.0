@@ -49,6 +49,7 @@ router.post('/', async (req, res) => {
         imageSequence: req.body.imageSequence || [],
         useImageSequence: req.body.useImageSequence || false,
         imageSequenceDuration: req.body.imageSequenceDuration || 3,
+        imageSequenceAnimation: req.body.imageSequenceAnimation || 'kenBurns',
     });
 
     try {
