@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Storage } = require('@google-cloud/storage');
 const fetch = require('node-fetch');
+const { GoogleGenAI } = require('@google/genai');
 
 // Initialize GCS with flexible credentials
 let storage;
@@ -88,40 +89,27 @@ Requirements: square format, suitable for children, no text, family-friendly, br
         let imageUrl = null;
         let generationMethod = 'placeholder';
         
-        // Try Google Gemini Nano Banana (image generation) first
+        // Try Google Gemini Nano Banana (image generation) first - using official SDK
         if (!imageUrl && geminiKey) {
             try {
-                console.log('🎨 Trying Google Gemini Nano Banana with key:', geminiKey.substring(0, 8) + '...');
+                console.log('🎨 Trying Google Gemini gemini-2.5-flash-image with SDK...');
                 
-                const geminiResponse = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiKey}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{
-                                parts: [{
-                                    text: fullPrompt
-                                }]
-                            }],
-                            generationConfig: {
-                                responseModalities: ["TEXT", "IMAGE"],
-                            }
-                        }),
-                    }
-                );
+                const ai = new GoogleGenAI({ apiKey: geminiKey });
                 
-                if (geminiResponse.ok) {
-                    const data = await geminiResponse.json();
-                    console.log('🎨 Gemini response received');
-                    
-                    // Find the image part in the response
-                    const parts = data.candidates?.[0]?.content?.parts || [];
-                    const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
-                    
-                    if (imagePart?.inlineData?.data) {
-                        const base64Image = imagePart.inlineData.data;
-                        const mimeType = imagePart.inlineData.mimeType || 'image/png';
+                const response = await ai.models.generateContent({
+                    model: "gemini-2.5-flash-image",
+                    contents: fullPrompt,
+                });
+                
+                console.log('🎨 Gemini response received');
+                
+                // Find the image part in the response
+                const parts = response.candidates?.[0]?.content?.parts || [];
+                
+                for (const part of parts) {
+                    if (part.inlineData) {
+                        const base64Image = part.inlineData.data;
+                        const mimeType = part.inlineData.mimeType || 'image/png';
                         const extension = mimeType.includes('jpeg') ? 'jpg' : 'png';
                         
                         console.log('✅ Gemini generated image, uploading to GCS...');
@@ -142,27 +130,27 @@ Requirements: square format, suitable for children, no text, family-friendly, br
                                 await file.makePublic();
                                 
                                 imageUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
-                                generationMethod = 'gemini-nano-banana';
+                                generationMethod = 'gemini-2.5-flash-image';
                                 console.log(`✅ Uploaded to GCS: ${imageUrl}`);
                             } catch (gcsError) {
                                 console.error('⚠️ GCS upload failed:', gcsError.message);
                                 // Return as data URL if GCS fails
                                 imageUrl = `data:${mimeType};base64,${base64Image}`;
-                                generationMethod = 'gemini-nano-banana-inline';
+                                generationMethod = 'gemini-2.5-flash-image-inline';
                                 console.log('✅ Using inline data URL');
                             }
                         } else {
                             // No GCS, return as data URL
                             imageUrl = `data:${mimeType};base64,${base64Image}`;
-                            generationMethod = 'gemini-nano-banana-inline';
+                            generationMethod = 'gemini-2.5-flash-image-inline';
                             console.log('✅ Using inline data URL (no GCS)');
                         }
-                    } else {
-                        console.log('⚠️ Gemini response did not contain an image');
+                        break; // Got image, exit loop
                     }
-                } else {
-                    const errorText = await geminiResponse.text();
-                    console.error('❌ Gemini error (status', geminiResponse.status + '):', errorText);
+                }
+                
+                if (!imageUrl) {
+                    console.log('⚠️ Gemini response did not contain an image');
                 }
             } catch (error) {
                 console.error('❌ Gemini generation failed:', error.message);
