@@ -40,34 +40,44 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/user-playlists - Create a new playlist
 router.post('/', async (req, res) => {
+    console.log('📋 POST /api/user-playlists - Request body:', JSON.stringify(req.body));
+    
     try {
         const { userId, name, description, coverImage } = req.body;
         
+        console.log('📋 Parsed values:', { userId, name, description: description?.substring(0, 50), hasCoverImage: !!coverImage });
+        
         if (!userId || !name) {
+            console.log('❌ Missing required fields:', { userId: !!userId, name: !!name });
             return res.status(400).json({ message: 'userId and name are required' });
         }
         
         // Check if user already has a playlist with this name
-        const existing = await UserPlaylist.findOne({ userId, name });
+        console.log('🔍 Checking for existing playlist...');
+        const existing = await UserPlaylist.findOne({ userId, name: name.trim() });
         if (existing) {
+            console.log('⚠️ Playlist already exists with this name');
             return res.status(400).json({ message: 'You already have a playlist with this name' });
         }
         
+        console.log('✅ Creating new playlist...');
         const playlist = new UserPlaylist({
             userId,
             name: name.trim(),
-            description: description?.trim(),
-            coverImage,
+            description: description?.trim() || '',
+            coverImage: coverImage || null,
             items: [],
         });
         
+        console.log('💾 Saving playlist to database...');
         await playlist.save();
         
-        console.log(`📋 New playlist created: "${name}" for user ${userId}`);
+        console.log(`📋 New playlist created: "${name}" for user ${userId}, ID: ${playlist._id}`);
         res.status(201).json(playlist);
     } catch (error) {
-        console.error('Create playlist error:', error);
-        res.status(500).json({ message: 'Failed to create playlist', error: error.message });
+        console.error('❌ Create playlist error:', error.name, error.message);
+        console.error('❌ Error stack:', error.stack);
+        res.status(500).json({ message: 'Failed to create playlist', error: error.message, errorName: error.name });
     }
 });
 
