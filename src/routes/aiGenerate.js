@@ -500,5 +500,134 @@ function getFallbackComments() {
     ];
 }
 
+// POST /api/ai/generate-playlist-comments - Generate personalized comments for a playlist
+router.post('/generate-playlist-comments', async (req, res) => {
+    try {
+        const { playlistName, playlistDescription, songTitles } = req.body;
+        
+        if (!playlistName) {
+            return res.status(400).json({ message: 'playlistName is required' });
+        }
+        
+        const geminiKey = process.env.GEMINI_API_KEY;
+        
+        if (!geminiKey) {
+            console.log('⚠️ No Gemini API key, returning fallback playlist comments');
+            return res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+        }
+        
+        const songList = songTitles?.slice(0, 5).join(', ') || '';
+        
+        const prompt = `Generate exactly 12 kid-friendly comment options for a children's music/audio playlist.
+
+Playlist Name: "${playlistName}"
+${playlistDescription ? `Description: ${playlistDescription}` : ''}
+${songList ? `Songs include: ${songList}` : ''}
+
+Create a mix of:
+- 8 positive/enthusiastic comments about the music and songs
+- 4 constructive but kind feedback comments
+
+Requirements for each comment:
+- Be 3-8 words only
+- Include exactly ONE relevant emoji at the start (music/sound themed when possible)
+- Be appropriate for children ages 3-10
+- Make them fun and engaging!
+- Reference music, listening, dancing, singing, or the playlist theme
+
+Return ONLY a valid JSON array with exactly 12 objects. Each object must have:
+- "text": the comment text (without emoji)
+- "emoji": single emoji character
+
+Example format:
+[{"text":"Best songs ever!","emoji":"🎵"},{"text":"Makes me want to dance!","emoji":"💃"}]
+
+Return ONLY the JSON array, no other text.`;
+
+        console.log(`🎯 Generating AI comments for playlist: "${playlistName}"`);
+        
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.9,
+                        maxOutputTokens: 1024,
+                    },
+                }),
+            }
+        );
+        
+        if (!response.ok) {
+            console.error('❌ Gemini API error:', await response.text());
+            return res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+        }
+        
+        const data = await response.json();
+        const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        
+        // Parse JSON from response (handle markdown code blocks)
+        let jsonString = responseText;
+        if (responseText.includes('```')) {
+            const match = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (match) {
+                jsonString = match[1];
+            }
+        }
+        
+        try {
+            const comments = JSON.parse(jsonString);
+            
+            // Validate and add colors to each comment
+            const validatedComments = comments
+                .filter((c) => c && c.text && c.emoji)
+                .slice(0, 12)
+                .map((c, index) => ({
+                    text: c.text.substring(0, 50),
+                    emoji: c.emoji,
+                    color: COMMENT_COLORS[index % COMMENT_COLORS.length],
+                }));
+            
+            if (validatedComments.length < 6) {
+                console.log('⚠️ Not enough valid AI comments, using fallback');
+                return res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+            }
+            
+            console.log(`✅ Generated ${validatedComments.length} AI comments for playlist "${playlistName}"`);
+            res.json({ comments: validatedComments, source: 'ai' });
+            
+        } catch (parseError) {
+            console.error('❌ Failed to parse AI response:', parseError.message);
+            console.log('Raw response:', responseText);
+            res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+        }
+        
+    } catch (error) {
+        console.error('Generate playlist comments error:', error);
+        res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+    }
+});
+
+// Fallback comments for playlists when AI generation fails
+function getFallbackPlaylistComments() {
+    return [
+        { text: "I love these songs!", emoji: "🎵", color: "pink" },
+        { text: "Makes me want to dance!", emoji: "💃", color: "yellow" },
+        { text: "So fun to listen to!", emoji: "🎧", color: "orange" },
+        { text: "Best playlist ever!", emoji: "⭐", color: "gold" },
+        { text: "I listen to it daily!", emoji: "🔄", color: "blue" },
+        { text: "The music is amazing!", emoji: "🎶", color: "purple" },
+        { text: "Makes me feel happy!", emoji: "😊", color: "green" },
+        { text: "Perfect for singing along!", emoji: "🎤", color: "teal" },
+        { text: "I want more songs!", emoji: "📀", color: "indigo" },
+        { text: "Some songs are tricky", emoji: "🤔", color: "amber" },
+        { text: "Pretty good music!", emoji: "👍", color: "lime" },
+        { text: "Can't stop listening!", emoji: "🎸", color: "cyan" },
+    ];
+}
+
 module.exports = router;
 

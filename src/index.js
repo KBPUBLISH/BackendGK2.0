@@ -104,6 +104,7 @@ app.use('/api/stripe', require('./routes/stripe'));
 app.use('/api/user-playlists', require('./routes/userPlaylists'));
 app.use('/api/ai', require('./routes/aiGenerate'));
 app.use('/api/book-comments', require('./routes/bookComments'));
+app.use('/api/playlist-comments', require('./routes/playlistComments'));
 
 // ===========================================
 // HEALTH & STATUS ENDPOINTS
