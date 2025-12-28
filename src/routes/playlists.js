@@ -65,6 +65,96 @@ router.get('/featured', async (req, res) => {
     }
 });
 
+// GET featured episodes (individual playlist items marked as featured)
+router.get('/featured-episodes', async (req, res) => {
+    try {
+        // Find all playlists that have at least one featured item
+        const playlists = await Playlist.find({ 
+            status: 'published',
+            'items.isFeatured': true 
+        }).lean();
+        
+        // Extract featured episodes with their parent playlist info
+        const featuredEpisodes = [];
+        
+        for (const playlist of playlists) {
+            const featuredItems = (playlist.items || []).filter(item => item.isFeatured);
+            
+            for (const item of featuredItems) {
+                featuredEpisodes.push({
+                    _id: item._id,
+                    title: item.title,
+                    author: item.author || playlist.author,
+                    description: item.description,
+                    coverImage: item.coverImage || playlist.coverImage,
+                    audioUrl: item.audioUrl,
+                    duration: item.duration,
+                    isMembersOnly: item.isMembersOnly || playlist.isMembersOnly,
+                    featuredOrder: item.featuredOrder || 0,
+                    playCount: item.playCount || 0,
+                    // Parent playlist info
+                    playlist: {
+                        _id: playlist._id,
+                        title: playlist.title,
+                        type: playlist.type,
+                        coverImage: playlist.coverImage,
+                    },
+                    // Index of this item in the playlist for direct playback
+                    itemIndex: playlist.items.findIndex(i => i._id.toString() === item._id.toString()),
+                });
+            }
+        }
+        
+        // Sort by featuredOrder
+        featuredEpisodes.sort((a, b) => a.featuredOrder - b.featuredOrder);
+        
+        console.log(`🎵 Featured episodes: ${featuredEpisodes.length} items from ${playlists.length} playlists`);
+        res.json(featuredEpisodes);
+    } catch (error) {
+        console.error('Error fetching featured episodes:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// PUT toggle featured status for a specific episode
+router.put('/:playlistId/items/:itemId/featured', async (req, res) => {
+    try {
+        const { playlistId, itemId } = req.params;
+        const { isFeatured, featuredOrder } = req.body;
+        
+        const playlist = await Playlist.findById(playlistId);
+        if (!playlist) {
+            return res.status(404).json({ message: 'Playlist not found' });
+        }
+        
+        const item = playlist.items.id(itemId);
+        if (!item) {
+            return res.status(404).json({ message: 'Item not found in playlist' });
+        }
+        
+        item.isFeatured = isFeatured;
+        if (featuredOrder !== undefined) {
+            item.featuredOrder = featuredOrder;
+        }
+        
+        await playlist.save();
+        
+        console.log(`⭐ Episode "${item.title}" featured status: ${isFeatured}`);
+        res.json({ 
+            success: true, 
+            item: {
+                _id: item._id,
+                title: item.title,
+                isFeatured: item.isFeatured,
+                featuredOrder: item.featuredOrder,
+            }
+        });
+    } catch (error) {
+        console.error('Error updating episode featured status:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 // GET top-rated playlists (15% or more likes/favorites to plays ratio)
 router.get('/top-rated', async (req, res) => {
     try {

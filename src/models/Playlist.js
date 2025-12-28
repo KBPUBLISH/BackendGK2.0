@@ -38,6 +38,16 @@ const audioItemSchema = new mongoose.Schema({
         type: Boolean,
         default: false,
     },
+    // Featured on app home page
+    isFeatured: {
+        type: Boolean,
+        default: false,
+    },
+    // Order in the featured section (lower = first)
+    featuredOrder: {
+        type: Number,
+        default: 0,
+    },
 }, { _id: true });
 
 const playlistSchema = new mongoose.Schema({

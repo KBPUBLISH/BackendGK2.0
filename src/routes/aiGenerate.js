@@ -503,22 +503,54 @@ function getFallbackComments() {
 // POST /api/ai/generate-playlist-comments - Generate personalized comments for a playlist
 router.post('/generate-playlist-comments', async (req, res) => {
     try {
-        const { playlistName, playlistDescription, songTitles } = req.body;
+        const { playlistName, playlistDescription, songTitles, playlistType } = req.body;
         
         if (!playlistName) {
             return res.status(400).json({ message: 'playlistName is required' });
         }
         
         const geminiKey = process.env.GEMINI_API_KEY;
+        const isAudiobook = playlistType === 'Audiobook';
         
         if (!geminiKey) {
             console.log('⚠️ No Gemini API key, returning fallback playlist comments');
-            return res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+            return res.json({ 
+                comments: isAudiobook ? getFallbackAudiobookComments() : getFallbackPlaylistComments(), 
+                source: 'fallback' 
+            });
         }
         
         const songList = songTitles?.slice(0, 5).join(', ') || '';
         
-        const prompt = `Generate exactly 12 kid-friendly comment options for a children's music/audio playlist.
+        // Different prompts for audiobooks vs music
+        const prompt = isAudiobook 
+            ? `Generate exactly 12 kid-friendly comment options for a children's AUDIOBOOK/SERMON series.
+
+Playlist Name: "${playlistName}"
+${playlistDescription ? `Description: ${playlistDescription}` : ''}
+${songList ? `Episodes include: ${songList}` : ''}
+
+Create a mix of:
+- 8 positive/enthusiastic comments about the stories, lessons, or episodes
+- 4 constructive but kind feedback comments
+
+Requirements for each comment:
+- Be 3-8 words only
+- Include exactly ONE relevant emoji at the start (book/learning/story themed - like 📚📖✨🌟💡🙏❤️😊🎧)
+- Be appropriate for children ages 3-10
+- Make them fun and engaging!
+- Reference listening to stories, learning lessons, the characters, or the message
+- DO NOT reference music, dancing, or singing - this is a story/sermon series!
+
+Return ONLY a valid JSON array with exactly 12 objects. Each object must have:
+- "text": the comment text (without emoji)
+- "emoji": single emoji character
+
+Example format:
+[{"text":"I love this story!","emoji":"📚"},{"text":"Great lesson to learn!","emoji":"💡"}]
+
+Return ONLY the JSON array, no other text.`
+            : `Generate exactly 12 kid-friendly comment options for a children's MUSIC playlist.
 
 Playlist Name: "${playlistName}"
 ${playlistDescription ? `Description: ${playlistDescription}` : ''}
@@ -530,7 +562,7 @@ Create a mix of:
 
 Requirements for each comment:
 - Be 3-8 words only
-- Include exactly ONE relevant emoji at the start (music/sound themed when possible)
+- Include exactly ONE relevant emoji at the start (music/sound themed when possible - like 🎵🎶💃🎤🎧✨😊)
 - Be appropriate for children ages 3-10
 - Make them fun and engaging!
 - Reference music, listening, dancing, singing, or the playlist theme
@@ -544,7 +576,7 @@ Example format:
 
 Return ONLY the JSON array, no other text.`;
 
-        console.log(`🎯 Generating AI comments for playlist: "${playlistName}"`);
+        console.log(`🎯 Generating AI comments for ${isAudiobook ? 'AUDIOBOOK' : 'MUSIC'} playlist: "${playlistName}"`);
         
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
@@ -563,7 +595,10 @@ Return ONLY the JSON array, no other text.`;
         
         if (!response.ok) {
             console.error('❌ Gemini API error:', await response.text());
-            return res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+            return res.json({ 
+                comments: isAudiobook ? getFallbackAudiobookComments() : getFallbackPlaylistComments(), 
+                source: 'fallback' 
+            });
         }
         
         const data = await response.json();
@@ -593,7 +628,10 @@ Return ONLY the JSON array, no other text.`;
             
             if (validatedComments.length < 6) {
                 console.log('⚠️ Not enough valid AI comments, using fallback');
-                return res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+                return res.json({ 
+                    comments: isAudiobook ? getFallbackAudiobookComments() : getFallbackPlaylistComments(), 
+                    source: 'fallback' 
+                });
             }
             
             console.log(`✅ Generated ${validatedComments.length} AI comments for playlist "${playlistName}"`);
@@ -602,16 +640,24 @@ Return ONLY the JSON array, no other text.`;
         } catch (parseError) {
             console.error('❌ Failed to parse AI response:', parseError.message);
             console.log('Raw response:', responseText);
-            res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+            res.json({ 
+                comments: isAudiobook ? getFallbackAudiobookComments() : getFallbackPlaylistComments(), 
+                source: 'fallback' 
+            });
         }
         
     } catch (error) {
         console.error('Generate playlist comments error:', error);
-        res.json({ comments: getFallbackPlaylistComments(), source: 'fallback' });
+        // Use playlistType from request body for fallback in outer catch
+        const isAudiobookType = req.body?.playlistType === 'Audiobook';
+        res.json({ 
+            comments: isAudiobookType ? getFallbackAudiobookComments() : getFallbackPlaylistComments(), 
+            source: 'fallback' 
+        });
     }
 });
 
-// Fallback comments for playlists when AI generation fails
+// Fallback comments for MUSIC playlists when AI generation fails
 function getFallbackPlaylistComments() {
     return [
         { text: "I love these songs!", emoji: "🎵", color: "pink" },
@@ -626,6 +672,24 @@ function getFallbackPlaylistComments() {
         { text: "Some songs are tricky", emoji: "🤔", color: "amber" },
         { text: "Pretty good music!", emoji: "👍", color: "lime" },
         { text: "Can't stop listening!", emoji: "🎸", color: "cyan" },
+    ];
+}
+
+// Fallback comments for AUDIOBOOK/SERMON playlists when AI generation fails
+function getFallbackAudiobookComments() {
+    return [
+        { text: "I love this story!", emoji: "📚", color: "pink" },
+        { text: "Such a great lesson!", emoji: "💡", color: "yellow" },
+        { text: "I learned something new!", emoji: "✨", color: "orange" },
+        { text: "Best stories ever!", emoji: "⭐", color: "gold" },
+        { text: "I listen every night!", emoji: "🌙", color: "blue" },
+        { text: "The characters are fun!", emoji: "😊", color: "purple" },
+        { text: "Makes me think!", emoji: "🤔", color: "green" },
+        { text: "I want more episodes!", emoji: "📖", color: "teal" },
+        { text: "So inspiring!", emoji: "🙏", color: "indigo" },
+        { text: "Some parts are long", emoji: "⏰", color: "amber" },
+        { text: "Really good stories!", emoji: "👍", color: "lime" },
+        { text: "Love listening to this!", emoji: "❤️", color: "cyan" },
     ];
 }
 
