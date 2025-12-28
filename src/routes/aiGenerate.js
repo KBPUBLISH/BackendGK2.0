@@ -370,5 +370,135 @@ Be concise (max 2 sentences). Only respond with the enhanced description, nothin
     }
 });
 
+// Color options for comment blocks
+const COMMENT_COLORS = ['pink', 'yellow', 'orange', 'gold', 'blue', 'purple', 'green', 'teal', 'indigo', 'amber', 'lime', 'rose', 'cyan', 'emerald'];
+
+// POST /api/ai/generate-book-comments - Generate personalized comments for a book
+router.post('/generate-book-comments', async (req, res) => {
+    try {
+        const { bookTitle, bookDescription, bookContent } = req.body;
+        
+        if (!bookTitle) {
+            return res.status(400).json({ message: 'bookTitle is required' });
+        }
+        
+        const geminiKey = process.env.GEMINI_API_KEY;
+        
+        if (!geminiKey) {
+            console.log('⚠️ No Gemini API key, returning fallback comments');
+            return res.json({ comments: getFallbackComments(), source: 'fallback' });
+        }
+        
+        const prompt = `Generate exactly 12 kid-friendly comment options for a children's book.
+
+Book Title: "${bookTitle}"
+${bookDescription ? `Description: ${bookDescription}` : ''}
+${bookContent ? `Story excerpt: ${bookContent.substring(0, 500)}` : ''}
+
+Create a mix of:
+- 8 positive/enthusiastic comments that reference specific story elements, characters, or themes from the book
+- 4 constructive but kind feedback comments
+
+Requirements for each comment:
+- Be 3-8 words only
+- Include exactly ONE relevant emoji at the start
+- Be appropriate for children ages 3-10
+- Make them fun and engaging!
+- Reference the book's characters, setting, or plot when possible
+
+Return ONLY a valid JSON array with exactly 12 objects. Each object must have:
+- "text": the comment text (without emoji)
+- "emoji": single emoji character
+
+Example format:
+[{"text":"I loved the brave knight!","emoji":"⚔️"},{"text":"So magical and fun!","emoji":"✨"}]
+
+Return ONLY the JSON array, no other text.`;
+
+        console.log(`🎯 Generating AI comments for book: "${bookTitle}"`);
+        
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.9,
+                        maxOutputTokens: 1024,
+                    },
+                }),
+            }
+        );
+        
+        if (!response.ok) {
+            console.error('❌ Gemini API error:', await response.text());
+            return res.json({ comments: getFallbackComments(), source: 'fallback' });
+        }
+        
+        const data = await response.json();
+        const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        
+        // Parse JSON from response (handle markdown code blocks)
+        let jsonString = responseText;
+        if (responseText.includes('```')) {
+            const match = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (match) {
+                jsonString = match[1];
+            }
+        }
+        
+        try {
+            const comments = JSON.parse(jsonString);
+            
+            // Validate and add colors to each comment
+            const validatedComments = comments
+                .filter((c) => c && c.text && c.emoji)
+                .slice(0, 12)
+                .map((c, index) => ({
+                    text: c.text.substring(0, 50),
+                    emoji: c.emoji,
+                    color: COMMENT_COLORS[index % COMMENT_COLORS.length],
+                }));
+            
+            if (validatedComments.length < 6) {
+                console.log('⚠️ Not enough valid AI comments, using fallback');
+                return res.json({ comments: getFallbackComments(), source: 'fallback' });
+            }
+            
+            console.log(`✅ Generated ${validatedComments.length} AI comments for "${bookTitle}"`);
+            res.json({ comments: validatedComments, source: 'ai' });
+            
+        } catch (parseError) {
+            console.error('❌ Failed to parse AI response:', parseError.message);
+            console.log('Raw response:', responseText);
+            res.json({ comments: getFallbackComments(), source: 'fallback' });
+        }
+        
+    } catch (error) {
+        console.error('Generate book comments error:', error);
+        res.json({ comments: getFallbackComments(), source: 'fallback' });
+    }
+});
+
+// Fallback comments when AI generation fails
+function getFallbackComments() {
+    return [
+        { text: "I loved this story!", emoji: "❤️", color: "pink" },
+        { text: "So much fun to read!", emoji: "🎉", color: "yellow" },
+        { text: "This made me smile!", emoji: "😊", color: "orange" },
+        { text: "Best book ever!", emoji: "⭐", color: "gold" },
+        { text: "I want to read it again!", emoji: "🔄", color: "blue" },
+        { text: "The pictures are amazing!", emoji: "🎨", color: "purple" },
+        { text: "I learned something new!", emoji: "💡", color: "green" },
+        { text: "So cool and exciting!", emoji: "😎", color: "teal" },
+        { text: "I wish it was longer!", emoji: "📚", color: "indigo" },
+        { text: "Some parts were tricky", emoji: "🤔", color: "amber" },
+        { text: "Pretty good story!", emoji: "👍", color: "lime" },
+        { text: "Made me want more!", emoji: "🌟", color: "cyan" },
+    ];
+}
+
 module.exports = router;
 

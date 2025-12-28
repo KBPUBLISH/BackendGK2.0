@@ -270,6 +270,16 @@ const bookSchema = new mongoose.Schema({
         default: null,
     },
     
+    // AI-generated comment options for this book (cached)
+    generatedComments: {
+        type: [{
+            text: { type: String, required: true },
+            emoji: { type: String, required: true },
+            color: { type: String, default: 'blue' },
+        }],
+        default: [],
+    },
+    
     createdAt: {
         type: Date,
         default: Date.now,

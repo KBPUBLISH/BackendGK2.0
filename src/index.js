@@ -103,6 +103,7 @@ app.use('/api/featured', require('./routes/featured'));
 app.use('/api/stripe', require('./routes/stripe'));
 app.use('/api/user-playlists', require('./routes/userPlaylists'));
 app.use('/api/ai', require('./routes/aiGenerate'));
+app.use('/api/book-comments', require('./routes/bookComments'));
 
 // ===========================================
 // HEALTH & STATUS ENDPOINTS
