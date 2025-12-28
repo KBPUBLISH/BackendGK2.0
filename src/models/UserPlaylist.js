@@ -75,9 +75,8 @@ const userPlaylistSchema = new mongoose.Schema({
 });
 
 // Update timestamp on save
-userPlaylistSchema.pre('save', function(next) {
+userPlaylistSchema.pre('save', function() {
     this.updatedAt = Date.now();
-    next();
 });
 
 // Index for efficient queries
