@@ -61,56 +61,9 @@ Requirements: square format, suitable for children, no text, family-friendly, br
         let imageUrl = null;
         let generationMethod = 'placeholder';
         
-        // Try Google Imagen (via Gemini API) first
-        if (!imageUrl && geminiKey) {
-            try {
-                console.log('🎨 Trying Google Imagen with key:', geminiKey.substring(0, 8) + '...');
-                const imagenResponse = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${geminiKey}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            instances: [{ prompt: fullPrompt }],
-                            parameters: {
-                                sampleCount: 1,
-                                aspectRatio: '1:1',
-                                safetyFilterLevel: 'block_low_and_above',
-                                personGeneration: 'dont_allow',
-                            },
-                        }),
-                    }
-                );
-                
-                if (imagenResponse.ok) {
-                    const data = await imagenResponse.json();
-                    const base64Image = data.predictions?.[0]?.bytesBase64Encoded;
-                    
-                    if (base64Image) {
-                        const imageBuffer = Buffer.from(base64Image, 'base64');
-                        
-                        const filename = `playlist-covers/${userId || 'anonymous'}/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
-                        const file = bucket.file(filename);
-                        
-                        await file.save(imageBuffer, {
-                            contentType: 'image/png',
-                            metadata: {
-                                cacheControl: 'public, max-age=31536000',
-                            },
-                        });
-                        
-                        imageUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
-                        generationMethod = 'google-imagen';
-                        console.log(`✅ Generated cover with Google Imagen: ${imageUrl}`);
-                    }
-                } else {
-                    const errorText = await imagenResponse.text();
-                    console.error('❌ Google Imagen error (status', imagenResponse.status + '):', errorText);
-                }
-            } catch (error) {
-                console.error('❌ Google Imagen generation failed:', error.message, error.stack);
-            }
-        }
+        // NOTE: Google Imagen via Gemini API requires a different endpoint/setup
+        // Skipping for now - using DALL-E directly which works better
+        // Future: Set up Vertex AI for Imagen support
         
         // Try OpenAI DALL-E as fallback
         if (!imageUrl && openaiKey) {
@@ -136,30 +89,18 @@ Requirements: square format, suitable for children, no text, family-friendly, br
                     const tempUrl = data.data[0]?.url;
                     
                     if (tempUrl) {
-                        // Download and upload to GCS for permanent storage
-                        const imageResponse = await fetch(tempUrl);
-                        const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-                        
-                        const filename = `playlist-covers/${userId || 'anonymous'}/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
-                        const file = bucket.file(filename);
-                        
-                        await file.save(imageBuffer, {
-                            contentType: 'image/png',
-                            metadata: {
-                                cacheControl: 'public, max-age=31536000',
-                            },
-                        });
-                        
-                        imageUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+                        // Return the DALL-E URL directly (valid for ~1 hour)
+                        // For production, you'd want to download and re-upload to your own storage
+                        imageUrl = tempUrl;
                         generationMethod = 'dall-e-3';
-                        console.log(`✅ Generated cover with DALL-E 3: ${imageUrl}`);
+                        console.log(`✅ Generated cover with DALL-E 3 (temp URL)`);
                     }
                 } else {
                     const errorText = await openaiResponse.text();
                     console.error('❌ OpenAI DALL-E error (status', openaiResponse.status + '):', errorText);
                 }
             } catch (error) {
-                console.error('❌ DALL-E generation failed:', error.message, error.stack);
+                console.error('❌ DALL-E generation failed:', error.message);
             }
         }
         
