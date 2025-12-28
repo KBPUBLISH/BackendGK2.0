@@ -85,6 +85,13 @@ const gameSchema = new mongoose.Schema({
         default: 0,
     },
     
+    // Age rating for the game
+    ageRating: {
+        type: String,
+        enum: ['All Ages', '3+', '4+', '5+', '6+', '7+', '8+', '9+', '10+'],
+        default: 'All Ages',
+    },
+    
     createdAt: {
         type: Date,
         default: Date.now,
