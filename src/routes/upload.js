@@ -228,6 +228,7 @@ router.post('/image', upload.single('file'), async (req, res) => {
         });
 
         let filePath;
+        const voiceId = req.query.voiceId;
 
         // Check if using organized structure
         if (bookId && type) {
@@ -245,6 +246,11 @@ router.post('/image', upload.single('file'), async (req, res) => {
                 filePath = generateFilePath(bookId, type, req.file.originalname, pageNumber);
             }
             console.log('Using organized structure:', filePath);
+        } else if (type === 'voices' && voiceId) {
+            // Special handling for voice character images
+            const safeFilename = req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+            filePath = `voices/${voiceId}/${Date.now()}_${safeFilename}`;
+            console.log('Using voice structure:', filePath);
         } else {
             // Fallback to simple structure for backward compatibility
             filePath = `images/${Date.now()}_${req.file.originalname}`;
