@@ -101,6 +101,8 @@ app.use('/api/translate', require('./routes/translate'));
 app.use('/api/referrals', require('./routes/referrals'));
 app.use('/api/featured', require('./routes/featured'));
 app.use('/api/stripe', require('./routes/stripe'));
+app.use('/api/user-playlists', require('./routes/userPlaylists'));
+app.use('/api/ai-generate', require('./routes/aiGenerate'));
 
 // ===========================================
 // HEALTH & STATUS ENDPOINTS
