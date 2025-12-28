@@ -88,9 +88,86 @@ Requirements: square format, suitable for children, no text, family-friendly, br
         let imageUrl = null;
         let generationMethod = 'placeholder';
         
-        // NOTE: Google Imagen via Gemini API requires a different endpoint/setup
-        // Skipping for now - using DALL-E directly which works better
-        // Future: Set up Vertex AI for Imagen support
+        // Try Google Gemini Nano Banana (image generation) first
+        if (!imageUrl && geminiKey) {
+            try {
+                console.log('🎨 Trying Google Gemini Nano Banana with key:', geminiKey.substring(0, 8) + '...');
+                
+                const geminiResponse = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{
+                                parts: [{
+                                    text: fullPrompt
+                                }]
+                            }],
+                            generationConfig: {
+                                responseModalities: ["TEXT", "IMAGE"],
+                            }
+                        }),
+                    }
+                );
+                
+                if (geminiResponse.ok) {
+                    const data = await geminiResponse.json();
+                    console.log('🎨 Gemini response received');
+                    
+                    // Find the image part in the response
+                    const parts = data.candidates?.[0]?.content?.parts || [];
+                    const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+                    
+                    if (imagePart?.inlineData?.data) {
+                        const base64Image = imagePart.inlineData.data;
+                        const mimeType = imagePart.inlineData.mimeType || 'image/png';
+                        const extension = mimeType.includes('jpeg') ? 'jpg' : 'png';
+                        
+                        console.log('✅ Gemini generated image, uploading to GCS...');
+                        
+                        if (bucket) {
+                            try {
+                                const imageBuffer = Buffer.from(base64Image, 'base64');
+                                const filename = `playlist-covers/${userId || 'anonymous'}/${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
+                                const file = bucket.file(filename);
+                                
+                                await file.save(imageBuffer, {
+                                    contentType: mimeType,
+                                    metadata: {
+                                        cacheControl: 'public, max-age=31536000',
+                                    },
+                                });
+                                
+                                await file.makePublic();
+                                
+                                imageUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+                                generationMethod = 'gemini-nano-banana';
+                                console.log(`✅ Uploaded to GCS: ${imageUrl}`);
+                            } catch (gcsError) {
+                                console.error('⚠️ GCS upload failed:', gcsError.message);
+                                // Return as data URL if GCS fails
+                                imageUrl = `data:${mimeType};base64,${base64Image}`;
+                                generationMethod = 'gemini-nano-banana-inline';
+                                console.log('✅ Using inline data URL');
+                            }
+                        } else {
+                            // No GCS, return as data URL
+                            imageUrl = `data:${mimeType};base64,${base64Image}`;
+                            generationMethod = 'gemini-nano-banana-inline';
+                            console.log('✅ Using inline data URL (no GCS)');
+                        }
+                    } else {
+                        console.log('⚠️ Gemini response did not contain an image');
+                    }
+                } else {
+                    const errorText = await geminiResponse.text();
+                    console.error('❌ Gemini error (status', geminiResponse.status + '):', errorText);
+                }
+            } catch (error) {
+                console.error('❌ Gemini generation failed:', error.message);
+            }
+        }
         
         // Try OpenAI DALL-E
         if (!imageUrl && openaiKey) {
