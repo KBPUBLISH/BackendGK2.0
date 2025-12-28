@@ -49,6 +49,16 @@ const voiceSchema = new mongoose.Schema({
         type: Boolean,
         default: false // Whether this voice requires premium subscription
     },
+    // Whether this voice needs to be unlocked (e.g., by completing a book)
+    isLockable: {
+        type: Boolean,
+        default: false
+    },
+    // Which book unlocks this voice (if lockable)
+    unlockedByBookId: {
+        type: String,
+        default: null
+    },
     createdAt: {
         type: Date,
         default: Date.now

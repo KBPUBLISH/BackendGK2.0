@@ -256,6 +256,20 @@ const bookSchema = new mongoose.Schema({
         default: null,
     },
     
+    // Default voice for this book - overrides user's selected voice while reading
+    // This is the voiceId from the Voices collection (e.g., ElevenLabs voice ID)
+    defaultVoiceId: {
+        type: String,
+        default: null,
+    },
+    
+    // Reward voice - unlocked when user completes reading this book
+    // This is the voiceId that gets added to user's unlockedVoices
+    rewardVoiceId: {
+        type: String,
+        default: null,
+    },
+    
     createdAt: {
         type: Date,
         default: Date.now,

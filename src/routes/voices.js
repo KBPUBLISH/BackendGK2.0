@@ -3,6 +3,7 @@ const router = express.Router();
 const axios = require('axios');
 const mongoose = require('mongoose');
 const Voice = require('../models/Voice');
+const AppUser = require('../models/AppUser');
 
 // GET / - Get all voices (enabled and disabled)
 router.get('/', async (req, res) => {
@@ -237,6 +238,122 @@ router.delete('/:voiceId', async (req, res) => {
     } catch (error) {
         console.error('Delete Voice Error:', error);
         res.status(500).json({ message: 'Failed to delete voice', error: error.message });
+    }
+});
+
+// POST /unlock - Unlock a voice for a user (called when completing a book)
+router.post('/unlock', async (req, res) => {
+    try {
+        const { userId, voiceId } = req.body;
+        
+        if (!userId || !voiceId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'userId and voiceId are required' 
+            });
+        }
+        
+        // Get the voice to return its details
+        const voice = await Voice.findOne({ voiceId });
+        if (!voice) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Voice not found' 
+            });
+        }
+        
+        // Find user and add voice to unlockedVoices if not already there
+        const user = await AppUser.findOne({ 
+            $or: [
+                { email: userId },
+                { _id: mongoose.Types.ObjectId.isValid(userId) ? userId : null }
+            ]
+        });
+        
+        if (!user) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'User not found' 
+            });
+        }
+        
+        // Check if already unlocked
+        if (user.unlockedVoices && user.unlockedVoices.includes(voiceId)) {
+            return res.json({ 
+                success: true, 
+                alreadyUnlocked: true,
+                message: 'Voice was already unlocked',
+                voice: {
+                    voiceId: voice.voiceId,
+                    name: voice.customName || voice.name,
+                    characterImage: voice.characterImage,
+                }
+            });
+        }
+        
+        // Add to unlocked voices
+        if (!user.unlockedVoices) {
+            user.unlockedVoices = [];
+        }
+        user.unlockedVoices.push(voiceId);
+        await user.save();
+        
+        console.log(`🎉 Voice unlocked for ${userId}: ${voice.customName || voice.name} (${voiceId})`);
+        
+        res.json({ 
+            success: true, 
+            alreadyUnlocked: false,
+            message: 'Voice unlocked successfully!',
+            voice: {
+                voiceId: voice.voiceId,
+                name: voice.customName || voice.name,
+                characterImage: voice.characterImage,
+            }
+        });
+    } catch (error) {
+        console.error('Unlock Voice Error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to unlock voice', 
+            error: error.message 
+        });
+    }
+});
+
+// GET /user/:userId/unlocked - Get list of unlocked voices for a user
+router.get('/user/:userId/unlocked', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const user = await AppUser.findOne({ 
+            $or: [
+                { email: userId },
+                { _id: mongoose.Types.ObjectId.isValid(userId) ? userId : null }
+            ]
+        });
+        
+        if (!user) {
+            return res.json({ unlockedVoices: [] });
+        }
+        
+        // Get full voice details for unlocked voices
+        const unlockedVoiceIds = user.unlockedVoices || [];
+        const voices = await Voice.find({ voiceId: { $in: unlockedVoiceIds } });
+        
+        res.json({ 
+            unlockedVoices: voices.map(v => ({
+                voiceId: v.voiceId,
+                name: v.customName || v.name,
+                characterImage: v.characterImage,
+                previewUrl: v.previewUrl,
+            }))
+        });
+    } catch (error) {
+        console.error('Get Unlocked Voices Error:', error);
+        res.status(500).json({ 
+            unlockedVoices: [],
+            error: error.message 
+        });
     }
 });
 
