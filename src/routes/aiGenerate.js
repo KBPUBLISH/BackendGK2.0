@@ -52,13 +52,19 @@ Requirements: square format, suitable for children, no text, family-friendly, br
         const openaiKey = process.env.OPENAI_API_KEY;
         const stabilityKey = process.env.STABILITY_API_KEY;
         
+        console.log('🔑 API Keys available:', {
+            gemini: geminiKey ? `${geminiKey.substring(0, 8)}...` : 'NOT SET',
+            openai: openaiKey ? `${openaiKey.substring(0, 8)}...` : 'NOT SET',
+            stability: stabilityKey ? 'SET' : 'NOT SET',
+        });
+        
         let imageUrl = null;
         let generationMethod = 'placeholder';
         
         // Try Google Imagen (via Gemini API) first
         if (!imageUrl && geminiKey) {
             try {
-                console.log('🎨 Trying Google Imagen...');
+                console.log('🎨 Trying Google Imagen with key:', geminiKey.substring(0, 8) + '...');
                 const imagenResponse = await fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${geminiKey}`,
                     {
@@ -99,17 +105,17 @@ Requirements: square format, suitable for children, no text, family-friendly, br
                     }
                 } else {
                     const errorText = await imagenResponse.text();
-                    console.error('Google Imagen error:', errorText);
+                    console.error('❌ Google Imagen error (status', imagenResponse.status + '):', errorText);
                 }
             } catch (error) {
-                console.error('Google Imagen generation failed:', error.message);
+                console.error('❌ Google Imagen generation failed:', error.message, error.stack);
             }
         }
         
         // Try OpenAI DALL-E as fallback
         if (!imageUrl && openaiKey) {
             try {
-                console.log('🎨 Trying OpenAI DALL-E...');
+                console.log('🎨 Trying OpenAI DALL-E with key:', openaiKey.substring(0, 8) + '...');
                 const openaiResponse = await fetch('https://api.openai.com/v1/images/generations', {
                     method: 'POST',
                     headers: {
@@ -149,11 +155,11 @@ Requirements: square format, suitable for children, no text, family-friendly, br
                         console.log(`✅ Generated cover with DALL-E 3: ${imageUrl}`);
                     }
                 } else {
-                    const errorData = await openaiResponse.json();
-                    console.error('OpenAI DALL-E error:', errorData);
+                    const errorText = await openaiResponse.text();
+                    console.error('❌ OpenAI DALL-E error (status', openaiResponse.status + '):', errorText);
                 }
             } catch (error) {
-                console.error('DALL-E generation failed:', error.message);
+                console.error('❌ DALL-E generation failed:', error.message, error.stack);
             }
         }
         
