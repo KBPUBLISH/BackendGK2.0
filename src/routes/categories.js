@@ -3,9 +3,24 @@ const router = express.Router();
 const Category = require('../models/Category');
 
 // Get all categories
+// Optional query params:
+// - type: 'Book' or 'Audio' to filter by contentType
 router.get('/', async (req, res) => {
     try {
-        const categories = await Category.find().sort({ name: 1 });
+        const { type } = req.query;
+        
+        // Build filter based on query params
+        const filter = {};
+        if (type) {
+            // Map type query param to contentType field
+            // Accept both 'book'/'audio' (lowercase) and 'Book'/'Audio' (proper case)
+            const normalizedType = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+            if (normalizedType === 'Book' || normalizedType === 'Audio') {
+                filter.contentType = normalizedType;
+            }
+        }
+        
+        const categories = await Category.find(filter).sort({ name: 1 });
         res.json(categories);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -28,7 +43,7 @@ router.get('/:id', async (req, res) => {
 // Create category
 router.post('/', async (req, res) => {
     try {
-        const { name, description, color, icon } = req.body;
+        const { name, description, color, icon, contentType } = req.body;
         
         // Check if category already exists
         const existing = await Category.findOne({ name: name.trim() });
@@ -41,6 +56,7 @@ router.post('/', async (req, res) => {
             description,
             color: color || '#6366f1',
             icon,
+            contentType: contentType || 'Book', // Default to Book if not specified
         });
 
         await category.save();
@@ -57,7 +73,7 @@ router.post('/', async (req, res) => {
 // Update category
 router.put('/:id', async (req, res) => {
     try {
-        const { name, description, color, icon } = req.body;
+        const { name, description, color, icon, contentType } = req.body;
         
         const category = await Category.findById(req.params.id);
         if (!category) {
@@ -76,6 +92,7 @@ router.put('/:id', async (req, res) => {
         category.description = description !== undefined ? description : category.description;
         category.color = color || category.color;
         category.icon = icon !== undefined ? icon : category.icon;
+        category.contentType = contentType || category.contentType;
         category.updatedAt = Date.now();
 
         await category.save();

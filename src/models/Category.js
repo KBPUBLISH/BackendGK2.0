@@ -17,6 +17,14 @@ const categorySchema = new mongoose.Schema({
     icon: {
         type: String, // Icon name or emoji
     },
+    // Category type: determines where this category appears in the app
+    // 'Book' = Read page, 'Audio' = Listen page
+    contentType: {
+        type: String,
+        enum: ['Book', 'Audio'],
+        default: 'Book',
+        required: true,
+    },
     createdAt: {
         type: Date,
         default: Date.now,
