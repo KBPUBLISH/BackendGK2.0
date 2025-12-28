@@ -3,12 +3,39 @@ const router = express.Router();
 const { Storage } = require('@google-cloud/storage');
 const fetch = require('node-fetch');
 
-// Initialize GCS
-const storage = new Storage({
-    projectId: process.env.GCS_PROJECT_ID,
-    keyFilename: process.env.GCS_KEY_FILE,
-});
-const bucket = storage.bucket(process.env.GCS_BUCKET || 'godly-kids-media');
+// Initialize GCS with flexible credentials
+let storage;
+let bucket;
+
+try {
+    // Try to parse credentials from environment variable (for Render/cloud deployment)
+    if (process.env.GCS_CREDENTIALS) {
+        const credentials = JSON.parse(process.env.GCS_CREDENTIALS);
+        storage = new Storage({
+            projectId: credentials.project_id || process.env.GCS_PROJECT_ID,
+            credentials: credentials,
+        });
+        console.log('✅ GCS initialized with credentials from GCS_CREDENTIALS env var');
+    } else if (process.env.GCS_KEY_FILE) {
+        // Fallback to key file path (for local development)
+        storage = new Storage({
+            projectId: process.env.GCS_PROJECT_ID,
+            keyFilename: process.env.GCS_KEY_FILE,
+        });
+        console.log('✅ GCS initialized with key file');
+    } else {
+        // Try default credentials (for GCP environments)
+        storage = new Storage({
+            projectId: process.env.GCS_PROJECT_ID,
+        });
+        console.log('⚠️ GCS initialized with default credentials');
+    }
+    bucket = storage.bucket(process.env.GCS_BUCKET || 'godly-kids-media');
+} catch (error) {
+    console.error('❌ Failed to initialize GCS:', error.message);
+    storage = null;
+    bucket = null;
+}
 
 // Available art styles for playlist covers
 const ART_STYLES = [
@@ -65,7 +92,7 @@ Requirements: square format, suitable for children, no text, family-friendly, br
         // Skipping for now - using DALL-E directly which works better
         // Future: Set up Vertex AI for Imagen support
         
-        // Try OpenAI DALL-E as fallback
+        // Try OpenAI DALL-E
         if (!imageUrl && openaiKey) {
             try {
                 console.log('🎨 Trying OpenAI DALL-E with key:', openaiKey.substring(0, 8) + '...');
@@ -89,11 +116,43 @@ Requirements: square format, suitable for children, no text, family-friendly, br
                     const tempUrl = data.data[0]?.url;
                     
                     if (tempUrl) {
-                        // Return the DALL-E URL directly (valid for ~1 hour)
-                        // For production, you'd want to download and re-upload to your own storage
-                        imageUrl = tempUrl;
-                        generationMethod = 'dall-e-3';
-                        console.log(`✅ Generated cover with DALL-E 3 (temp URL)`);
+                        console.log('✅ DALL-E generated image, downloading...');
+                        
+                        // Try to upload to GCS for permanent storage
+                        if (bucket) {
+                            try {
+                                const imageResponse = await fetch(tempUrl);
+                                const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+                                
+                                const filename = `playlist-covers/${userId || 'anonymous'}/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+                                const file = bucket.file(filename);
+                                
+                                await file.save(imageBuffer, {
+                                    contentType: 'image/png',
+                                    metadata: {
+                                        cacheControl: 'public, max-age=31536000',
+                                    },
+                                });
+                                
+                                // Make file public
+                                await file.makePublic();
+                                
+                                imageUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+                                generationMethod = 'dall-e-3';
+                                console.log(`✅ Uploaded to GCS: ${imageUrl}`);
+                            } catch (gcsError) {
+                                console.error('⚠️ GCS upload failed, using temp URL:', gcsError.message);
+                                // Fall back to temp URL if GCS fails
+                                imageUrl = tempUrl;
+                                generationMethod = 'dall-e-3-temp';
+                                console.log('✅ Using DALL-E temp URL');
+                            }
+                        } else {
+                            // No GCS configured, use temp URL
+                            imageUrl = tempUrl;
+                            generationMethod = 'dall-e-3-temp';
+                            console.log('✅ Using DALL-E temp URL (no GCS configured)');
+                        }
                     }
                 } else {
                     const errorText = await openaiResponse.text();
