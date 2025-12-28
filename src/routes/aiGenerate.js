@@ -208,25 +208,30 @@ Requirements: square format, suitable for children, no text, family-friendly, br
             }
         }
         
-        // If no API available or all failed, use a placeholder based on style
+        // If no API available or all failed, generate an SVG placeholder
         if (!imageUrl) {
-            // Use style-based placeholder images
-            const placeholders = {
-                cartoon: 'https://storage.googleapis.com/godly-kids-media/placeholders/playlist-cartoon.png',
-                watercolor: 'https://storage.googleapis.com/godly-kids-media/placeholders/playlist-watercolor.png',
-                pixel: 'https://storage.googleapis.com/godly-kids-media/placeholders/playlist-pixel.png',
-                storybook: 'https://storage.googleapis.com/godly-kids-media/placeholders/playlist-storybook.png',
-                anime: 'https://storage.googleapis.com/godly-kids-media/placeholders/playlist-anime.png',
-                paper: 'https://storage.googleapis.com/godly-kids-media/placeholders/playlist-paper.png',
-                crayon: 'https://storage.googleapis.com/godly-kids-media/placeholders/playlist-crayon.png',
-                clay: 'https://storage.googleapis.com/godly-kids-media/placeholders/playlist-clay.png',
+            // Generate style-specific gradient colors
+            const styleColors = {
+                cartoon: { from: '#FF6B6B', to: '#4ECDC4' },
+                watercolor: { from: '#A8E6CF', to: '#88D8B0' },
+                pixel: { from: '#9B59B6', to: '#3498DB' },
+                storybook: { from: '#F39C12', to: '#E74C3C' },
+                anime: { from: '#FF69B4', to: '#9B59B6' },
+                paper: { from: '#E67E22', to: '#D35400' },
+                crayon: { from: '#F1C40F', to: '#E74C3C' },
+                clay: { from: '#1ABC9C', to: '#16A085' },
             };
             
-            // Default colorful gradient placeholder
-            imageUrl = placeholders[style] || 'https://via.placeholder.com/1024x1024/6366f1/ffffff?text=🎵';
+            const colors = styleColors[style] || { from: '#9333ea', to: '#ec4899' };
+            const safeName = (playlistName || 'Playlist').replace(/[^a-zA-Z0-9 ]/g, '').substring(0, 15);
+            
+            // Create SVG as data URL (works everywhere, no external dependency)
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:${colors.from}"/><stop offset="100%" style="stop-color:${colors.to}"/></linearGradient></defs><rect width="512" height="512" fill="url(#g)"/><circle cx="256" cy="200" r="60" fill="rgba(255,255,255,0.25)"/><polygon points="240,175 240,225 290,200" fill="white"/><text x="256" y="320" font-family="Arial,sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">${safeName}</text><text x="256" y="360" font-family="Arial,sans-serif" font-size="16" fill="rgba(255,255,255,0.8)" text-anchor="middle">${selectedStyle.name} Style</text></svg>`;
+            
+            imageUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
             generationMethod = 'placeholder';
             
-            console.log(`⚠️ Using placeholder image (AI generation failed or no API configured): ${imageUrl}`);
+            console.log(`⚠️ Using SVG placeholder (no AI API configured)`);
         }
         
         res.json({
