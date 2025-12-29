@@ -67,5 +67,23 @@ router.delete('/:commentId', async (req, res) => {
     }
 });
 
+// DELETE /api/playlist-comments/reset/:playlistId - Reset all comments for a playlist (admin)
+router.delete('/reset/:playlistId', async (req, res) => {
+    try {
+        const { playlistId } = req.params;
+        
+        const result = await PlaylistComment.deleteMany({ playlistId });
+        console.log(`🗑️ Reset ${result.deletedCount} comments for playlist ${playlistId}`);
+        
+        res.json({ 
+            message: `Successfully deleted ${result.deletedCount} comments for playlist`,
+            deletedCount: result.deletedCount 
+        });
+    } catch (error) {
+        console.error('Error resetting playlist comments:', error);
+        res.status(500).json({ message: 'Failed to reset comments', error: error.message });
+    }
+});
+
 module.exports = router;
 
