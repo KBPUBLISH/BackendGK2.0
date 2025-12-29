@@ -452,6 +452,18 @@ router.put('/:id', async (req, res) => {
             delete req.body.bookGames;
         }
         
+        // Handle multi-character voice settings
+        if (req.body.defaultNarratorVoiceId !== undefined) {
+            book.defaultNarratorVoiceId = req.body.defaultNarratorVoiceId || null;
+            console.log('🎭 Updated defaultNarratorVoiceId:', book.defaultNarratorVoiceId);
+            delete req.body.defaultNarratorVoiceId;
+        }
+        if (req.body.characterVoices !== undefined) {
+            book.characterVoices = req.body.characterVoices || [];
+            console.log('🎭 Updated characterVoices:', JSON.stringify(book.characterVoices));
+            delete req.body.characterVoices;
+        }
+        
         // Update all other fields
         Object.assign(book, req.body);
         
