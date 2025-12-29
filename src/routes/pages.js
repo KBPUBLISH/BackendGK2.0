@@ -74,6 +74,18 @@ router.put('/:id', async (req, res) => {
         const page = await Page.findById(req.params.id);
         if (!page) return res.status(404).json({ message: 'Page not found' });
 
+        // If textBoxes is being updated at root level, also update content.textBoxes
+        // and clear the old content.textBoxes to avoid stale data conflicts
+        if (req.body.textBoxes) {
+            // Update root level textBoxes
+            page.textBoxes = req.body.textBoxes;
+            // Also sync to content.textBoxes for consistency
+            if (!page.content) page.content = {};
+            page.content.textBoxes = req.body.textBoxes;
+            // Remove textBoxes from req.body to avoid Object.assign overwriting
+            delete req.body.textBoxes;
+        }
+
         Object.assign(page, req.body);
         const updatedPage = await page.save();
         res.json(updatedPage);
