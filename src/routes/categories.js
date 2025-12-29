@@ -15,8 +15,15 @@ router.get('/', async (req, res) => {
             // Map type query param to contentType field
             // Accept both 'book'/'audio' (lowercase) and 'Book'/'Audio' (proper case)
             const normalizedType = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
-            if (normalizedType === 'Book' || normalizedType === 'Audio') {
-                filter.contentType = normalizedType;
+            if (normalizedType === 'Book') {
+                // For 'Book' type, include categories with contentType='Book' OR no contentType (legacy)
+                filter.$or = [
+                    { contentType: 'Book' },
+                    { contentType: { $exists: false } },
+                    { contentType: null }
+                ];
+            } else if (normalizedType === 'Audio') {
+                filter.contentType = 'Audio';
             }
         }
         
