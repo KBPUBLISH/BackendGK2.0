@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 // Track individual play events for real-time trending
+// Includes engagement metrics for better trending accuracy
 const playEventSchema = new mongoose.Schema({
     // Type of content: 'book', 'episode', 'playlist'
     contentType: {
@@ -34,6 +35,40 @@ const playEventSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
         index: true,
+    },
+    
+    // === ENGAGEMENT METRICS ===
+    // Duration listened in seconds (for audio content)
+    durationSeconds: {
+        type: Number,
+        default: 0,
+    },
+    // Total duration of content in seconds (to calculate completion %)
+    totalDurationSeconds: {
+        type: Number,
+        default: 0,
+    },
+    // Pages viewed (for books)
+    pagesViewed: {
+        type: Number,
+        default: 0,
+    },
+    // Total pages in book (to calculate completion %)
+    totalPages: {
+        type: Number,
+        default: 0,
+    },
+    // Completion percentage (0-100)
+    completionPercent: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 100,
+    },
+    // Whether this is an "update" event (true) or initial "start" event (false)
+    isEngagementUpdate: {
+        type: Boolean,
+        default: false,
     },
 });
 

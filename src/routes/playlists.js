@@ -116,7 +116,8 @@ router.get('/featured-episodes', async (req, res) => {
     }
 });
 
-// GET trending episodes (top episodes by recent play count within time window)
+// GET trending episodes (top episodes by engagement score within time window)
+// Engagement score = plays + (total listen time in minutes / 5) + (avg completion % * 2)
 router.get('/trending-episodes', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 10;
@@ -129,8 +130,8 @@ router.get('/trending-episodes', async (req, res) => {
         // Import PlayEvent model
         const PlayEvent = require('../models/PlayEvent');
         
-        // Get trending episodes based on recent play events
-        const trendingCounts = await PlayEvent.aggregate([
+        // Get trending episodes based on engagement metrics
+        const trendingData = await PlayEvent.aggregate([
             { 
                 $match: { 
                     contentType: 'episode',
@@ -141,17 +142,34 @@ router.get('/trending-episodes', async (req, res) => {
                 $group: { 
                     _id: { playlistId: '$playlistId', itemIndex: '$itemIndex' },
                     recentPlays: { $sum: 1 },
+                    totalListenSeconds: { $sum: '$durationSeconds' },
+                    avgCompletion: { $avg: '$completionPercent' },
                     lastPlayed: { $max: '$playedAt' }
                 } 
             },
-            // Sort by plays (desc), then by lastPlayed (desc), then by _id for consistent ordering
-            { $sort: { recentPlays: -1, lastPlayed: -1, '_id.playlistId': 1, '_id.itemIndex': 1 } },
+            {
+                // Calculate engagement score:
+                // - Each play = 1 point
+                // - Every 5 minutes listened = 1 point
+                // - Average completion contributes up to 2 points (completion% * 0.02)
+                $addFields: {
+                    engagementScore: {
+                        $add: [
+                            '$recentPlays',
+                            { $divide: [{ $ifNull: ['$totalListenSeconds', 0] }, 300] }, // 300 sec = 5 min
+                            { $multiply: [{ $ifNull: ['$avgCompletion', 0] }, 0.02] }
+                        ]
+                    }
+                }
+            },
+            // Sort by engagement score (desc), then by lastPlayed (desc), then by _id for consistent ordering
+            { $sort: { engagementScore: -1, lastPlayed: -1, '_id.playlistId': 1, '_id.itemIndex': 1 } },
             { $limit: limit }
         ]);
         
         // If we have trending data, fetch the episode details
-        if (trendingCounts.length > 0) {
-            const playlistIds = [...new Set(trendingCounts.map(t => t._id.playlistId))];
+        if (trendingData.length > 0) {
+            const playlistIds = [...new Set(trendingData.map(t => t._id.playlistId))];
             const playlists = await Playlist.find({ 
                 _id: { $in: playlistIds },
                 status: 'published'
@@ -164,7 +182,7 @@ router.get('/trending-episodes', async (req, res) => {
             });
             
             // Build trending episodes
-            const trendingEpisodes = trendingCounts
+            const trendingEpisodes = trendingData
                 .map(t => {
                     const playlist = playlistMap[t._id.playlistId?.toString()];
                     if (!playlist || !playlist.items || !playlist.items[t._id.itemIndex]) {
@@ -181,6 +199,9 @@ router.get('/trending-episodes', async (req, res) => {
                         duration: item.duration,
                         isMembersOnly: item.isMembersOnly || playlist.isMembersOnly,
                         recentPlays: t.recentPlays,
+                        totalListenMinutes: Math.round((t.totalListenSeconds || 0) / 60),
+                        avgCompletion: Math.round(t.avgCompletion || 0),
+                        engagementScore: Math.round(t.engagementScore * 10) / 10,
                         lastPlayed: t.lastPlayed,
                         playlist: {
                             _id: playlist._id,
@@ -193,7 +214,7 @@ router.get('/trending-episodes', async (req, res) => {
                 })
                 .filter(Boolean);
             
-            console.log(`📈 Trending episodes (${timeWindow}): ${trendingEpisodes.length} items`);
+            console.log(`📈 Trending episodes (${timeWindow}): ${trendingEpisodes.length} items, top score: ${trendingEpisodes[0]?.engagementScore}`);
             return res.json(trendingEpisodes);
         }
         

@@ -149,7 +149,8 @@ router.get('/top-rated', async (req, res) => {
     }
 });
 
-// GET trending books (top books by recent play count within time window)
+// GET trending books (top books by engagement score within time window)
+// Engagement score = plays + (total pages viewed / 10) + (avg completion % * 2)
 router.get('/trending', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 10;
@@ -162,8 +163,8 @@ router.get('/trending', async (req, res) => {
         // Import PlayEvent model
         const PlayEvent = require('../models/PlayEvent');
         
-        // Get trending books based on recent play events
-        const trendingCounts = await PlayEvent.aggregate([
+        // Get trending books based on engagement metrics
+        const trendingData = await PlayEvent.aggregate([
             { 
                 $match: { 
                     contentType: 'book',
@@ -174,17 +175,34 @@ router.get('/trending', async (req, res) => {
                 $group: { 
                     _id: '$contentId',
                     recentPlays: { $sum: 1 },
+                    totalPagesViewed: { $sum: '$pagesViewed' },
+                    avgCompletion: { $avg: '$completionPercent' },
                     lastPlayed: { $max: '$playedAt' }
                 } 
             },
-            // Sort by plays (desc), then by lastPlayed (desc), then by _id for consistent ordering
-            { $sort: { recentPlays: -1, lastPlayed: -1, _id: 1 } },
+            {
+                // Calculate engagement score:
+                // - Each play = 1 point
+                // - Every 10 pages viewed = 1 point
+                // - Average completion contributes up to 2 points (completion% * 0.02)
+                $addFields: {
+                    engagementScore: {
+                        $add: [
+                            '$recentPlays',
+                            { $divide: [{ $ifNull: ['$totalPagesViewed', 0] }, 10] },
+                            { $multiply: [{ $ifNull: ['$avgCompletion', 0] }, 0.02] }
+                        ]
+                    }
+                }
+            },
+            // Sort by engagement score (desc), then by lastPlayed (desc), then by _id for consistent ordering
+            { $sort: { engagementScore: -1, lastPlayed: -1, _id: 1 } },
             { $limit: limit }
         ]);
         
         // If we have trending data, fetch the book details
-        if (trendingCounts.length > 0) {
-            const bookIds = trendingCounts.map(t => t._id);
+        if (trendingData.length > 0) {
+            const bookIds = trendingData.map(t => t._id);
             const books = await Book.find({ 
                 _id: { $in: bookIds },
                 status: 'published'
@@ -199,18 +217,25 @@ router.get('/trending', async (req, res) => {
                 bookMap[book._id.toString()] = book;
             });
             
-            // Sort by trending count and format
-            const formattedBooks = trendingCounts
+            // Sort by engagement score and format
+            const formattedBooks = trendingData
                 .map(t => {
                     const book = bookMap[t._id.toString()];
                     if (book) {
-                        return { ...book, recentPlays: t.recentPlays, lastPlayed: t.lastPlayed };
+                        return { 
+                            ...book, 
+                            recentPlays: t.recentPlays, 
+                            totalPagesViewed: t.totalPagesViewed || 0,
+                            avgCompletion: Math.round(t.avgCompletion || 0),
+                            engagementScore: Math.round(t.engagementScore * 10) / 10,
+                            lastPlayed: t.lastPlayed 
+                        };
                     }
                     return null;
                 })
                 .filter(Boolean);
             
-            console.log(`📚 Trending books (${timeWindow}): ${formattedBooks.length} items`);
+            console.log(`📚 Trending books (${timeWindow}): ${formattedBooks.length} items, top score: ${formattedBooks[0]?.engagementScore}`);
             return res.json(formattedBooks);
         }
         

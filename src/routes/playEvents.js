@@ -2,10 +2,19 @@ const express = require('express');
 const router = express.Router();
 const PlayEvent = require('../models/PlayEvent');
 
-// POST - Record a play event
+// POST - Record a play event (initial play)
 router.post('/', async (req, res) => {
     try {
-        const { contentType, contentId, playlistId, itemIndex, userId } = req.body;
+        const { 
+            contentType, 
+            contentId, 
+            playlistId, 
+            itemIndex, 
+            userId,
+            // Optional engagement data for initial event
+            totalDurationSeconds,
+            totalPages
+        } = req.body;
         
         if (!contentType || !contentId) {
             return res.status(400).json({ message: 'contentType and contentId are required' });
@@ -18,6 +27,9 @@ router.post('/', async (req, res) => {
             itemIndex,
             userId: userId || 'anonymous',
             playedAt: new Date(),
+            totalDurationSeconds: totalDurationSeconds || 0,
+            totalPages: totalPages || 0,
+            isEngagementUpdate: false,
         });
         
         await playEvent.save();
@@ -26,6 +38,46 @@ router.post('/', async (req, res) => {
         res.status(201).json({ success: true, eventId: playEvent._id });
     } catch (error) {
         console.error('Error recording play event:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// PUT - Update engagement metrics for a play event
+router.put('/:eventId/engagement', async (req, res) => {
+    try {
+        const { eventId } = req.params;
+        const { 
+            durationSeconds, 
+            pagesViewed, 
+            completionPercent,
+            totalDurationSeconds,
+            totalPages
+        } = req.body;
+        
+        const updateData = {
+            isEngagementUpdate: true,
+        };
+        
+        if (durationSeconds !== undefined) updateData.durationSeconds = durationSeconds;
+        if (pagesViewed !== undefined) updateData.pagesViewed = pagesViewed;
+        if (completionPercent !== undefined) updateData.completionPercent = Math.min(100, Math.max(0, completionPercent));
+        if (totalDurationSeconds !== undefined) updateData.totalDurationSeconds = totalDurationSeconds;
+        if (totalPages !== undefined) updateData.totalPages = totalPages;
+        
+        const playEvent = await PlayEvent.findByIdAndUpdate(
+            eventId,
+            updateData,
+            { new: true }
+        );
+        
+        if (!playEvent) {
+            return res.status(404).json({ message: 'Play event not found' });
+        }
+        
+        console.log(`📊 Engagement updated: ${playEvent.contentType} - ${durationSeconds || pagesViewed}${durationSeconds ? 's' : ' pages'} (${completionPercent}%)`);
+        res.json({ success: true, playEvent });
+    } catch (error) {
+        console.error('Error updating engagement:', error);
         res.status(500).json({ message: error.message });
     }
 });
