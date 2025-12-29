@@ -270,6 +270,26 @@ const bookSchema = new mongoose.Schema({
         default: null,
     },
     
+    // Default narrator voice for this book (optional)
+    // If set, all non-character-tagged text uses this voice
+    // If blank/null, user's selected voice is used for narration
+    defaultNarratorVoiceId: {
+        type: String,
+        default: null,
+    },
+    
+    // Character-to-voice mappings for @character tags in text boxes
+    // When text starts with @CharacterName, that character's voice is used
+    // Example: @Moses "Let my people go!" -> uses Moses's assigned voice
+    characterVoices: {
+        type: [{
+            characterName: { type: String, required: true }, // e.g., "Moses", "Pharaoh", "God"
+            voiceId: { type: String, required: true },       // ElevenLabs voice ID from Voices collection
+            color: { type: String, default: null },          // Optional: text highlight color for this character
+        }],
+        default: [],
+    },
+    
     // AI-generated comment options for this book (cached)
     generatedComments: {
         type: [{

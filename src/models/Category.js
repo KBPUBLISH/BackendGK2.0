@@ -19,11 +19,11 @@ const categorySchema = new mongoose.Schema({
     },
     // Category type: determines where this category appears in the app
     // 'Book' = Read page, 'Audio' = Listen page
+    // Note: Not required to support legacy categories that don't have this field
     contentType: {
         type: String,
-        enum: ['Book', 'Audio'],
+        enum: ['Book', 'Audio', null],
         default: 'Book',
-        required: true,
     },
     createdAt: {
         type: Date,
