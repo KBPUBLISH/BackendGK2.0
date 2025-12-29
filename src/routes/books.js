@@ -149,6 +149,35 @@ router.get('/top-rated', async (req, res) => {
     }
 });
 
+// GET trending books (top books by read count)
+router.get('/trending', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10;
+        
+        const books = await Book.find({ 
+            status: 'published',
+            readCount: { $gt: 0 } // Only books that have been read
+        })
+        .sort({ readCount: -1 }) // Sort by most reads first
+        .limit(limit)
+        .lean();
+        
+        // Add coverImage for backward compatibility
+        const formattedBooks = books.map(book => {
+            if (book.files && book.files.coverImage) {
+                book.coverImage = book.files.coverImage;
+            }
+            return book;
+        });
+        
+        console.log(`📚 Trending books: ${formattedBooks.length} items (top ${limit})`);
+        res.json(formattedBooks);
+    } catch (error) {
+        console.error('Error fetching trending books:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 // GET single book
 router.get('/:id', async (req, res) => {
     try {
