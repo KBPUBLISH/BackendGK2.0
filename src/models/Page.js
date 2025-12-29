@@ -24,6 +24,22 @@ const pageSchema = new mongoose.Schema({
         type: Boolean,
         default: true // Default to end modal only
     },
+    
+    // Web View page - embeds external URL or game as interactive content
+    isWebViewPage: {
+        type: Boolean,
+        default: false
+    },
+    webView: {
+        // External URL to load in the web view
+        url: { type: String },
+        // OR reference to a game from the Games collection
+        gameId: { type: mongoose.Schema.Types.ObjectId, ref: 'Game' },
+        // Optional title to display in the overlay
+        title: { type: String },
+        // Whether to show the "Continue Reading" navigation button
+        showNavigationButton: { type: Boolean, default: true },
+    },
 
     // Page content - organized structure
     content: {

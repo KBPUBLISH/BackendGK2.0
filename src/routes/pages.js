@@ -14,7 +14,10 @@ router.get('/book/:bookId', async (req, res) => {
             return res.json([]); // Return empty array for invalid IDs instead of error
         }
         
-        const pages = await Page.find({ bookId }).sort({ pageNumber: 1 });
+        // Populate webView.gameId to include game URL for web view pages
+        const pages = await Page.find({ bookId })
+            .populate('webView.gameId', 'url name coverImage gameType')
+            .sort({ pageNumber: 1 });
         res.json(pages);
     } catch (error) {
         console.error('❌ Error fetching pages:', error.message);
@@ -43,6 +46,9 @@ router.post('/', async (req, res) => {
         // Coloring page settings
         isColoringPage: req.body.isColoringPage || false,
         coloringEndModalOnly: req.body.coloringEndModalOnly !== false, // Default to true (end modal only)
+        // Web View page settings
+        isWebViewPage: req.body.isWebViewPage || false,
+        webView: req.body.webView || {},
         // Video sequence settings
         videoSequence: req.body.videoSequence || [],
         useVideoSequence: req.body.useVideoSequence || false,
