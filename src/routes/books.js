@@ -177,7 +177,8 @@ router.get('/trending', async (req, res) => {
                     lastPlayed: { $max: '$playedAt' }
                 } 
             },
-            { $sort: { recentPlays: -1 } },
+            // Sort by plays (desc), then by lastPlayed (desc), then by _id for consistent ordering
+            { $sort: { recentPlays: -1, lastPlayed: -1, _id: 1 } },
             { $limit: limit }
         ]);
         
