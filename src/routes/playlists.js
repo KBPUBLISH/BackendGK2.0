@@ -116,6 +116,61 @@ router.get('/featured-episodes', async (req, res) => {
     }
 });
 
+// GET trending episodes (top episodes by play count)
+router.get('/trending-episodes', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10;
+        
+        // Find all published playlists
+        const playlists = await Playlist.find({ 
+            status: 'published',
+            'items.0': { $exists: true } // Has at least one item
+        }).lean();
+        
+        // Extract all episodes with their play counts
+        const allEpisodes = [];
+        
+        for (const playlist of playlists) {
+            for (let i = 0; i < (playlist.items || []).length; i++) {
+                const item = playlist.items[i];
+                // Only include items with play counts > 0
+                if (item.playCount && item.playCount > 0) {
+                    allEpisodes.push({
+                        _id: item._id,
+                        title: item.title,
+                        author: item.author || playlist.author,
+                        description: item.description,
+                        coverImage: item.coverImage || playlist.coverImage,
+                        audioUrl: item.audioUrl,
+                        duration: item.duration,
+                        isMembersOnly: item.isMembersOnly || playlist.isMembersOnly,
+                        playCount: item.playCount || 0,
+                        // Parent playlist info
+                        playlist: {
+                            _id: playlist._id,
+                            title: playlist.title,
+                            type: playlist.type,
+                            coverImage: playlist.coverImage,
+                        },
+                        // Index of this item in the playlist for direct playback
+                        itemIndex: i,
+                    });
+                }
+            }
+        }
+        
+        // Sort by play count (highest first) and take top N
+        allEpisodes.sort((a, b) => b.playCount - a.playCount);
+        const trendingEpisodes = allEpisodes.slice(0, limit);
+        
+        console.log(`📈 Trending episodes: ${trendingEpisodes.length} items (top ${limit})`);
+        res.json(trendingEpisodes);
+    } catch (error) {
+        console.error('Error fetching trending episodes:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 // PUT toggle featured status for a specific episode
 router.put('/:playlistId/items/:itemId/featured', async (req, res) => {
     try {
