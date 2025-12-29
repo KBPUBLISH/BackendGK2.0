@@ -45,6 +45,90 @@ const extractGcsPathFromUrl = (url) => {
     return null;
 };
 
+// Extract audio from video buffer using FFmpeg
+// Returns a Promise that resolves to the audio buffer or null if extraction fails
+const extractAudioFromVideo = (videoBuffer, originalFilename) => {
+    return new Promise((resolve, reject) => {
+        const tempDir = os.tmpdir();
+        const tempVideoPath = path.join(tempDir, `temp_video_${Date.now()}${path.extname(originalFilename)}`);
+        const tempAudioPath = path.join(tempDir, `temp_audio_${Date.now()}.mp3`);
+        
+        // Write video buffer to temp file
+        fs.writeFileSync(tempVideoPath, videoBuffer);
+        
+        console.log('🎬 Extracting audio from video:', originalFilename);
+        
+        ffmpeg(tempVideoPath)
+            .noVideo()
+            .audioCodec('libmp3lame')
+            .audioBitrate('128k')
+            .audioChannels(2)
+            .audioFrequency(44100)
+            .output(tempAudioPath)
+            .on('start', (cmd) => {
+                console.log('🎬 FFmpeg command:', cmd);
+            })
+            .on('progress', (progress) => {
+                if (progress.percent) {
+                    console.log(`🎬 Audio extraction progress: ${Math.round(progress.percent)}%`);
+                }
+            })
+            .on('end', () => {
+                console.log('🎬 Audio extraction complete');
+                try {
+                    const audioBuffer = fs.readFileSync(tempAudioPath);
+                    // Cleanup temp files
+                    fs.unlinkSync(tempVideoPath);
+                    fs.unlinkSync(tempAudioPath);
+                    resolve(audioBuffer);
+                } catch (err) {
+                    console.error('🎬 Error reading extracted audio:', err);
+                    // Cleanup
+                    try { fs.unlinkSync(tempVideoPath); } catch (e) {}
+                    try { fs.unlinkSync(tempAudioPath); } catch (e) {}
+                    resolve(null); // Return null instead of rejecting - audio extraction is optional
+                }
+            })
+            .on('error', (err) => {
+                console.error('🎬 FFmpeg error:', err.message);
+                // Cleanup
+                try { fs.unlinkSync(tempVideoPath); } catch (e) {}
+                try { fs.unlinkSync(tempAudioPath); } catch (e) {}
+                resolve(null); // Return null instead of rejecting - video might not have audio
+            })
+            .run();
+    });
+};
+
+// Upload buffer to GCS and return public URL
+const uploadBufferToGCS = (buffer, filePath, contentType) => {
+    return new Promise((resolve, reject) => {
+        if (!bucket) {
+            reject(new Error('GCS not configured'));
+            return;
+        }
+        
+        const blob = bucket.file(filePath);
+        const blobStream = blob.createWriteStream({
+            metadata: { contentType },
+            resumable: false
+        });
+        
+        blobStream.on('error', (err) => {
+            console.error('GCS upload error for', filePath, ':', err);
+            reject(err);
+        });
+        
+        blobStream.on('finish', () => {
+            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+            console.log('✅ Uploaded to GCS:', publicUrl);
+            resolve(publicUrl);
+        });
+        
+        blobStream.end(buffer);
+    });
+};
+
 const extractLocalUploadsPathFromUrl = (url) => {
     try {
         const u = String(url || '');
@@ -416,7 +500,7 @@ router.post('/video', (req, res, next) => {
                     });
             });
 
-            blobStream.on('finish', () => {
+            blobStream.on('finish', async () => {
                 if (responded) {
                     console.log('GCS upload finished but response already sent');
                     return;
@@ -424,7 +508,38 @@ router.post('/video', (req, res, next) => {
                 responded = true;
                 const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
                 console.log('Video uploaded successfully to GCS:', publicUrl);
-                res.status(200).json({ url: publicUrl, path: filePath });
+                
+                // Auto-extract audio for page background videos AND video sequences
+                // This allows video sound effects to play alongside TTS on iOS
+                const shouldExtractAudio = bookId && (type === 'pages' || type === 'video' || type === 'sequence');
+                let backgroundAudioUrl = null;
+                
+                if (shouldExtractAudio) {
+                    console.log('🎬 Auto-extracting audio from page background video...');
+                    try {
+                        const audioBuffer = await extractAudioFromVideo(req.file.buffer, req.file.originalname);
+                        if (audioBuffer && audioBuffer.length > 1000) { // Only if audio is substantial (> 1KB)
+                            // Generate audio file path
+                            const audioFilename = path.basename(filePath, path.extname(filePath)) + '.mp3';
+                            const audioFilePath = `books/${bookId}/background-audio/${audioFilename}`;
+                            
+                            backgroundAudioUrl = await uploadBufferToGCS(audioBuffer, audioFilePath, 'audio/mpeg');
+                            console.log('🎬 Background audio extracted and uploaded:', backgroundAudioUrl);
+                        } else {
+                            console.log('🎬 No audio track in video or audio too short, skipping');
+                        }
+                    } catch (audioErr) {
+                        console.warn('🎬 Audio extraction failed (video will work without separate audio):', audioErr.message);
+                        // Don't fail the request - video upload was successful
+                    }
+                }
+                
+                // Return response with both URLs
+                res.status(200).json({ 
+                    url: publicUrl, 
+                    path: filePath,
+                    backgroundAudioUrl // Will be null if not extracted or extraction failed
+                });
             });
 
             try {
@@ -758,6 +873,82 @@ router.post('/sound-effect', upload.single('file'), async (req, res) => {
         }
     } catch (error) {
         console.error('Sound effect upload error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Upload background audio - extracted video audio or ambient sound that loops with the page
+// This plays as separate <audio> element so it can layer with TTS (unlike video audio on iOS)
+// Query params: bookId (required), pageNumber (optional)
+router.post('/background-audio', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'No file uploaded' });
+        }
+
+        const { bookId, pageNumber } = req.query;
+
+        if (!bookId) {
+            return res.status(400).json({ message: 'bookId is required for background audio uploads' });
+        }
+
+        // Validate file type (audio only)
+        const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/m4a', 'audio/aac'];
+        if (!allowedTypes.includes(req.file.mimetype) && !req.file.originalname.match(/\.(mp3|wav|ogg|m4a|aac)$/i)) {
+            return res.status(400).json({ 
+                message: 'Invalid file type. Only MP3, WAV, OGG, M4A, and AAC audio files are allowed.' 
+            });
+        }
+
+        // Validate file size (max 20MB for longer ambient loops)
+        const maxSize = 20 * 1024 * 1024; // 20MB
+        if (req.file.size > maxSize) {
+            return res.status(400).json({ 
+                message: 'Background audio file is too large. Maximum size is 20MB.' 
+            });
+        }
+
+        const fileExtension = path.extname(req.file.originalname).toLowerCase() || '.mp3';
+        
+        // Generate organized file path: books/{bookId}/background-audio/filename
+        const filename = pageNumber 
+            ? `page-${pageNumber}-${Date.now()}${fileExtension}`
+            : `${Date.now()}-${req.file.originalname}`;
+        const filePath = `books/${bookId}/background-audio/${filename}`;
+
+        console.log('Uploading background audio to:', filePath);
+
+        // Check if GCS is configured
+        if (bucket && process.env.GCS_BUCKET_NAME) {
+            console.log('Uploading background audio to GCS:', filePath);
+            const blob = bucket.file(filePath);
+            const blobStream = blob.createWriteStream({
+                metadata: {
+                    contentType: req.file.mimetype,
+                },
+                resumable: false,
+            });
+
+            blobStream.on('error', (error) => {
+                console.error('GCS background audio upload error:', error);
+                res.status(500).json({ message: 'Failed to upload background audio to storage' });
+            });
+
+            blobStream.on('finish', async () => {
+                const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+                console.log('Background audio uploaded successfully:', publicUrl);
+                res.status(200).json({ url: publicUrl, path: filePath, filename });
+            });
+
+            blobStream.end(req.file.buffer);
+        } else {
+            // Use local storage
+            console.log('GCS not configured, using local storage for background audio');
+            const url = await saveFileLocally(req.file, filePath, req);
+            res.status(200).json({ url, path: filePath, filename });
+        }
+    } catch (error) {
+        console.error('Background audio upload error:', error);
         res.status(500).json({ message: error.message });
     }
 });

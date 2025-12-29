@@ -38,6 +38,7 @@ router.post('/', async (req, res) => {
         scrollMaxHeight: req.body.scrollMaxHeight,
         scrollOffsetY: req.body.scrollOffsetY || 0,
         soundEffectUrl: req.body.soundEffectUrl,
+        backgroundAudioUrl: req.body.backgroundAudioUrl, // Auto-extracted from video for iOS audio layering
         textBoxes: req.body.textBoxes,
         // Coloring page settings
         isColoringPage: req.body.isColoringPage || false,

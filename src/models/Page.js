@@ -102,6 +102,7 @@ const pageSchema = new mongoose.Schema({
         url: { type: String, required: true },
         filename: { type: String },
         order: { type: Number, required: true },
+        audioUrl: { type: String }, // Auto-extracted audio for this video (iOS audio layering)
         uploadedAt: { type: Date, default: Date.now },
     }],
     // Flag to use video sequence instead of single background video
@@ -132,6 +133,9 @@ const pageSchema = new mongoose.Schema({
     scrollMaxHeight: { type: Number }, // Max scroll height %
     scrollOffsetY: { type: Number, default: 0 }, // Vertical offset from bottom in percentage (positive = higher)
     soundEffectUrl: { type: String }, // URL for sound effect bubble audio
+    // Background audio - extracted from video or separate ambient audio that loops with the page
+    // This plays as a separate <audio> element so it can layer with TTS (unlike video audio on iOS)
+    backgroundAudioUrl: { type: String },
     // Legacy textBoxes at root level (portal sends here, new schema uses content.textBoxes)
     textBoxes: [{
         text: String,
