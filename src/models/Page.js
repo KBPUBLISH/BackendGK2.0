@@ -38,6 +38,7 @@ const pageSchema = new mongoose.Schema({
             x: Number, // percentage (0-100)
             y: Number, // percentage (0-100)
             width: { type: Number, default: 30 }, // percentage (0-100)
+            height: { type: Number }, // percentage (0-100) - optional, auto if not set
             alignment: { type: String, enum: ['left', 'center', 'right'], default: 'left' },
             fontFamily: { type: String, default: 'Comic Sans MS' },
             fontSize: { type: Number, default: 24 },
@@ -137,6 +138,7 @@ const pageSchema = new mongoose.Schema({
         x: Number,
         y: Number,
         width: { type: Number, default: 30 },
+        height: { type: Number }, // percentage (0-100) - optional, auto if not set
         alignment: { type: String, enum: ['left', 'center', 'right'], default: 'left' },
         fontFamily: { type: String, default: 'Comic Sans MS' },
         fontSize: { type: Number, default: 24 },
