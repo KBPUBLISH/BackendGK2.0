@@ -389,29 +389,38 @@ router.post('/generate-book-comments', async (req, res) => {
             return res.json({ comments: getFallbackComments(), source: 'fallback' });
         }
         
-        const prompt = `Generate exactly 12 kid-friendly comment options for a children's book.
+        const prompt = `Generate exactly 12 kid-friendly comment options for a children's Christian/faith-based book.
 
 Book Title: "${bookTitle}"
 ${bookDescription ? `Description: ${bookDescription}` : ''}
 ${bookContent ? `Story excerpt: ${bookContent.substring(0, 500)}` : ''}
 
-Create a mix of:
-- 8 positive/enthusiastic comments that reference specific story elements, characters, or themes from the book
-- 4 constructive but kind feedback comments
+Create a mix of FEEDBACK-ORIENTED comments that help us understand if the content resonates:
+
+PRIORITY COMMENTS (6 total):
+- 3 comments about LEARNING something (e.g., "This taught me something!", "I learned about Jesus!", "I learned about God!")
+- 3 comments about FAITH CONNECTION (e.g., "The Bible is awesome!", "I want to follow God!", "This helps me pray!")
+
+EMOTIONAL/ENGAGEMENT COMMENTS (4 total):
+- 2 comments about emotional impact (e.g., "This touched my heart!", "God bless everyone!")
+- 2 comments about wanting more/sharing (e.g., "Read it again please!", "I told my friends!")
+
+FUN/SIMPLE COMMENTS (2 total):
+- 2 fun but still meaningful comments (e.g., "I love this story!", "My favorite book!")
 
 Requirements for each comment:
 - Be 3-8 words only
 - Include exactly ONE relevant emoji at the start
 - Be appropriate for children ages 3-10
-- Make them fun and engaging!
-- Reference the book's characters, setting, or plot when possible
+- Focus on faith, learning, and emotional connection - NOT just surface-level reactions
+- Use emojis like: 💡 ✝️ 🙏 📖 ⭐ ❤️ 🌟 ✨ 😊 👫 🔄 📚
 
 Return ONLY a valid JSON array with exactly 12 objects. Each object must have:
 - "text": the comment text (without emoji)
 - "emoji": single emoji character
 
 Example format:
-[{"text":"I loved the brave knight!","emoji":"⚔️"},{"text":"So magical and fun!","emoji":"✨"}]
+[{"text":"This taught me something!","emoji":"💡"},{"text":"I learned about Jesus!","emoji":"✝️"}]
 
 Return ONLY the JSON array, no other text.`;
 
@@ -482,21 +491,24 @@ Return ONLY the JSON array, no other text.`;
     }
 });
 
-// Fallback comments when AI generation fails
+// Fallback comments when AI generation fails - FEEDBACK-FOCUSED
 function getFallbackComments() {
     return [
-        { text: "I loved this story!", emoji: "❤️", color: "pink" },
-        { text: "So much fun to read!", emoji: "🎉", color: "yellow" },
-        { text: "This made me smile!", emoji: "😊", color: "orange" },
-        { text: "Best book ever!", emoji: "⭐", color: "gold" },
-        { text: "I want to read it again!", emoji: "🔄", color: "blue" },
-        { text: "The pictures are amazing!", emoji: "🎨", color: "purple" },
-        { text: "I learned something new!", emoji: "💡", color: "green" },
-        { text: "So cool and exciting!", emoji: "😎", color: "teal" },
-        { text: "I wish it was longer!", emoji: "📚", color: "indigo" },
-        { text: "Some parts were tricky", emoji: "🤔", color: "amber" },
-        { text: "Pretty good story!", emoji: "👍", color: "lime" },
-        { text: "Made me want more!", emoji: "🌟", color: "cyan" },
+        // Learning & Faith-based feedback (high value)
+        { text: "This taught me something!", emoji: "💡", color: "gold" },
+        { text: "I learned about Jesus!", emoji: "✝️", color: "blue" },
+        { text: "I learned about God!", emoji: "🙏", color: "purple" },
+        { text: "The Bible is awesome!", emoji: "📖", color: "indigo" },
+        { text: "This made me think!", emoji: "🤔", color: "teal" },
+        { text: "I want to be like this!", emoji: "⭐", color: "yellow" },
+        // Emotional resonance
+        { text: "This touched my heart!", emoji: "❤️", color: "pink" },
+        { text: "I love this story!", emoji: "😊", color: "orange" },
+        { text: "God bless everyone!", emoji: "🌟", color: "cyan" },
+        // Engagement feedback
+        { text: "Read it again please!", emoji: "🔄", color: "green" },
+        { text: "I told my friends!", emoji: "👫", color: "lime" },
+        { text: "My favorite book!", emoji: "📚", color: "amber" },
     ];
 }
 
@@ -522,57 +534,65 @@ router.post('/generate-playlist-comments', async (req, res) => {
         
         const songList = songTitles?.slice(0, 5).join(', ') || '';
         
-        // Different prompts for audiobooks vs music
+        // Different prompts for audiobooks vs music - FEEDBACK-FOCUSED
         const prompt = isAudiobook 
-            ? `Generate exactly 12 kid-friendly comment options for a children's AUDIOBOOK/SERMON series.
+            ? `Generate exactly 12 kid-friendly comment options for a children's Christian AUDIOBOOK/SERMON series.
 
 Playlist Name: "${playlistName}"
 ${playlistDescription ? `Description: ${playlistDescription}` : ''}
 ${songList ? `Episodes include: ${songList}` : ''}
 
-Create a mix of:
-- 8 positive/enthusiastic comments about the stories, lessons, or episodes
-- 4 constructive but kind feedback comments
+Create FEEDBACK-ORIENTED comments that help us understand if the content resonates:
 
-Requirements for each comment:
+PRIORITY COMMENTS (6 total):
+- 3 comments about LEARNING something (e.g., "This taught me something!", "I learned about Jesus!", "I learned about God!")
+- 3 comments about FAITH CONNECTION (e.g., "The Bible is amazing!", "I want to follow God!", "This helps me pray!")
+
+EMOTIONAL/ENGAGEMENT COMMENTS (4 total):
+- 2 comments about emotional impact (e.g., "This touched my heart!", "I feel God's love!")
+- 2 comments about wanting more/sharing (e.g., "Listen to this again!", "I told my family!")
+
+FUN/SIMPLE COMMENTS (2 total):
+- 2 fun but still meaningful comments (e.g., "My favorite story!", "God bless everyone!")
+
+Requirements:
 - Be 3-8 words only
-- Include exactly ONE relevant emoji at the start (book/learning/story themed - like 📚📖✨🌟💡🙏❤️😊🎧)
+- Include exactly ONE relevant emoji (💡 ✝️ 🙏 📖 ⭐ ❤️ 🌟 ✨ 😊 👫 🔄 📚)
 - Be appropriate for children ages 3-10
-- Make them fun and engaging!
-- Reference listening to stories, learning lessons, the characters, or the message
+- Focus on faith, learning, and emotional connection
 - DO NOT reference music, dancing, or singing - this is a story/sermon series!
 
-Return ONLY a valid JSON array with exactly 12 objects. Each object must have:
-- "text": the comment text (without emoji)
-- "emoji": single emoji character
-
-Example format:
-[{"text":"I love this story!","emoji":"📚"},{"text":"Great lesson to learn!","emoji":"💡"}]
+Return ONLY a valid JSON array with exactly 12 objects:
+[{"text":"This taught me something!","emoji":"💡"},{"text":"I learned about Jesus!","emoji":"✝️"}]
 
 Return ONLY the JSON array, no other text.`
-            : `Generate exactly 12 kid-friendly comment options for a children's MUSIC playlist.
+            : `Generate exactly 12 kid-friendly comment options for a children's Christian WORSHIP/MUSIC playlist.
 
 Playlist Name: "${playlistName}"
 ${playlistDescription ? `Description: ${playlistDescription}` : ''}
 ${songList ? `Songs include: ${songList}` : ''}
 
-Create a mix of:
-- 8 positive/enthusiastic comments about the music and songs
-- 4 constructive but kind feedback comments
+Create FEEDBACK-ORIENTED comments that help us understand if the content resonates:
 
-Requirements for each comment:
+PRIORITY COMMENTS (6 total):
+- 3 comments about LEARNING/WORSHIP (e.g., "These songs teach me!", "I love praising God!", "Music about Jesus!")
+- 3 comments about FAITH CONNECTION (e.g., "I feel closer to God!", "This brings me joy!", "I want to worship!")
+
+EMOTIONAL/ENGAGEMENT COMMENTS (4 total):
+- 2 comments about emotional impact (e.g., "These songs touch my heart!", "Makes me happy inside!")
+- 2 comments about engagement (e.g., "I sing this every day!", "My family loves this!")
+
+FUN/SIMPLE COMMENTS (2 total):
+- 2 fun but still meaningful comments (e.g., "God bless everyone!", "Best songs ever!")
+
+Requirements:
 - Be 3-8 words only
-- Include exactly ONE relevant emoji at the start (music/sound themed when possible - like 🎵🎶💃🎤🎧✨😊)
+- Include exactly ONE relevant emoji (💡 🙏 ✝️ ⭐ ❤️ 🌟 ✨ 😊 🎵 💃 🎤 👫)
 - Be appropriate for children ages 3-10
-- Make them fun and engaging!
-- Reference music, listening, dancing, singing, or the playlist theme
+- Focus on faith, worship, and emotional connection
 
-Return ONLY a valid JSON array with exactly 12 objects. Each object must have:
-- "text": the comment text (without emoji)
-- "emoji": single emoji character
-
-Example format:
-[{"text":"Best songs ever!","emoji":"🎵"},{"text":"Makes me want to dance!","emoji":"💃"}]
+Return ONLY a valid JSON array with exactly 12 objects:
+[{"text":"These songs teach me!","emoji":"💡"},{"text":"I love praising God!","emoji":"🙏"}]
 
 Return ONLY the JSON array, no other text.`;
 
@@ -657,39 +677,45 @@ Return ONLY the JSON array, no other text.`;
     }
 });
 
-// Fallback comments for MUSIC playlists when AI generation fails
+// Fallback comments for MUSIC playlists when AI generation fails - FEEDBACK-FOCUSED
 function getFallbackPlaylistComments() {
     return [
-        { text: "I love these songs!", emoji: "🎵", color: "pink" },
-        { text: "Makes me want to dance!", emoji: "💃", color: "yellow" },
-        { text: "So fun to listen to!", emoji: "🎧", color: "orange" },
-        { text: "Best playlist ever!", emoji: "⭐", color: "gold" },
-        { text: "I listen to it daily!", emoji: "🔄", color: "blue" },
-        { text: "The music is amazing!", emoji: "🎶", color: "purple" },
-        { text: "Makes me feel happy!", emoji: "😊", color: "green" },
-        { text: "Perfect for singing along!", emoji: "🎤", color: "teal" },
-        { text: "I want more songs!", emoji: "📀", color: "indigo" },
-        { text: "Some songs are tricky", emoji: "🤔", color: "amber" },
-        { text: "Pretty good music!", emoji: "👍", color: "lime" },
-        { text: "Can't stop listening!", emoji: "🎸", color: "cyan" },
+        // Learning & Faith-based feedback (high value)
+        { text: "These songs teach me!", emoji: "💡", color: "gold" },
+        { text: "I love praising God!", emoji: "🙏", color: "blue" },
+        { text: "Music about Jesus!", emoji: "✝️", color: "purple" },
+        { text: "This brings me joy!", emoji: "😊", color: "yellow" },
+        { text: "I feel closer to God!", emoji: "⭐", color: "indigo" },
+        // Emotional resonance
+        { text: "These songs touch my heart!", emoji: "❤️", color: "pink" },
+        { text: "Makes me happy inside!", emoji: "🌟", color: "orange" },
+        { text: "God bless everyone!", emoji: "✨", color: "cyan" },
+        // Engagement feedback
+        { text: "I sing this every day!", emoji: "🎤", color: "green" },
+        { text: "My family loves this!", emoji: "👫", color: "lime" },
+        { text: "I dance and worship!", emoji: "💃", color: "teal" },
+        { text: "Best songs ever!", emoji: "🎵", color: "amber" },
     ];
 }
 
-// Fallback comments for AUDIOBOOK/SERMON playlists when AI generation fails
+// Fallback comments for AUDIOBOOK/SERMON playlists when AI generation fails - FEEDBACK-FOCUSED
 function getFallbackAudiobookComments() {
     return [
-        { text: "I love this story!", emoji: "📚", color: "pink" },
-        { text: "Such a great lesson!", emoji: "💡", color: "yellow" },
-        { text: "I learned something new!", emoji: "✨", color: "orange" },
-        { text: "Best stories ever!", emoji: "⭐", color: "gold" },
-        { text: "I listen every night!", emoji: "🌙", color: "blue" },
-        { text: "The characters are fun!", emoji: "😊", color: "purple" },
-        { text: "Makes me think!", emoji: "🤔", color: "green" },
-        { text: "I want more episodes!", emoji: "📖", color: "teal" },
-        { text: "So inspiring!", emoji: "🙏", color: "indigo" },
-        { text: "Some parts are long", emoji: "⏰", color: "amber" },
-        { text: "Really good stories!", emoji: "👍", color: "lime" },
-        { text: "Love listening to this!", emoji: "❤️", color: "cyan" },
+        // Learning & Faith-based feedback (high value)
+        { text: "This taught me something!", emoji: "💡", color: "gold" },
+        { text: "I learned about Jesus!", emoji: "✝️", color: "blue" },
+        { text: "I learned about God!", emoji: "🙏", color: "purple" },
+        { text: "The Bible is amazing!", emoji: "📖", color: "indigo" },
+        { text: "This helps me pray!", emoji: "🙏", color: "yellow" },
+        { text: "I want to follow God!", emoji: "⭐", color: "teal" },
+        // Emotional resonance
+        { text: "This touched my heart!", emoji: "❤️", color: "pink" },
+        { text: "I feel God's love!", emoji: "✨", color: "orange" },
+        { text: "God bless everyone!", emoji: "🌟", color: "cyan" },
+        // Engagement feedback
+        { text: "Listen to this again!", emoji: "🔄", color: "green" },
+        { text: "I told my family!", emoji: "👫", color: "lime" },
+        { text: "My favorite story!", emoji: "📚", color: "amber" },
     ];
 }
 
