@@ -23,6 +23,11 @@ const ttsCacheSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.Mixed, // JSON object with character start/end times
         required: true
     },
+    // Optional: bookId for clearing cache by book
+    bookId: {
+        type: String,
+        index: true
+    },
     createdAt: {
         type: Date,
         default: Date.now
@@ -32,5 +37,7 @@ const ttsCacheSchema = new mongoose.Schema({
 
 // Compound index for fast lookups
 ttsCacheSchema.index({ textHash: 1, voiceId: 1 }, { unique: true });
+// Index for clearing cache by book
+ttsCacheSchema.index({ bookId: 1 });
 
 module.exports = mongoose.model('TTSCache', ttsCacheSchema);

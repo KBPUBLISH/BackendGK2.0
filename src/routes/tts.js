@@ -310,7 +310,8 @@ router.post('/generate', async (req, res) => {
                 voiceId,
                 text,
                 audioUrl,
-                alignmentData
+                alignmentData,
+                bookId: bookId || null // Store bookId for cache clearing by book
             });
             await newCache.save();
         } catch (cacheError) {
@@ -672,9 +673,21 @@ router.delete('/clear-cache', async (req, res) => {
             });
         }
         
+        // Clear all cache entries for a specific book
+        if (req.body.bookId) {
+            const result = await TTSCache.deleteMany({ bookId: req.body.bookId });
+            console.log(`🗑️ Cleared ${result.deletedCount} TTS cache entries for book ${req.body.bookId}`);
+            return res.json({ 
+                success: true, 
+                message: `Cleared ${result.deletedCount} cache entries for book`,
+                deletedCount: result.deletedCount,
+                bookId: req.body.bookId
+            });
+        }
+        
         return res.status(400).json({ 
             success: false, 
-            message: 'Provide textHash+voiceId, voiceId, or clearAll=true' 
+            message: 'Provide textHash+voiceId, voiceId, bookId, or clearAll=true' 
         });
         
     } catch (error) {
