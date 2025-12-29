@@ -116,24 +116,96 @@ router.get('/featured-episodes', async (req, res) => {
     }
 });
 
-// GET trending episodes (top episodes by play count)
+// GET trending episodes (top episodes by recent play count within time window)
 router.get('/trending-episodes', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 10;
+        const timeWindow = req.query.timeWindow || '7d'; // Default 7 days
         
-        // Find all published playlists
+        // Parse time window to milliseconds
+        const windowMs = parseTimeWindow(timeWindow);
+        const since = new Date(Date.now() - windowMs);
+        
+        // Import PlayEvent model
+        const PlayEvent = require('../models/PlayEvent');
+        
+        // Get trending episodes based on recent play events
+        const trendingCounts = await PlayEvent.aggregate([
+            { 
+                $match: { 
+                    contentType: 'episode',
+                    playedAt: { $gte: since }
+                } 
+            },
+            { 
+                $group: { 
+                    _id: { playlistId: '$playlistId', itemIndex: '$itemIndex' },
+                    recentPlays: { $sum: 1 },
+                    lastPlayed: { $max: '$playedAt' }
+                } 
+            },
+            { $sort: { recentPlays: -1 } },
+            { $limit: limit }
+        ]);
+        
+        // If we have trending data, fetch the episode details
+        if (trendingCounts.length > 0) {
+            const playlistIds = [...new Set(trendingCounts.map(t => t._id.playlistId))];
+            const playlists = await Playlist.find({ 
+                _id: { $in: playlistIds },
+                status: 'published'
+            }).lean();
+            
+            // Create a map for quick lookup
+            const playlistMap = {};
+            playlists.forEach(p => {
+                playlistMap[p._id.toString()] = p;
+            });
+            
+            // Build trending episodes
+            const trendingEpisodes = trendingCounts
+                .map(t => {
+                    const playlist = playlistMap[t._id.playlistId?.toString()];
+                    if (!playlist || !playlist.items || !playlist.items[t._id.itemIndex]) {
+                        return null;
+                    }
+                    const item = playlist.items[t._id.itemIndex];
+                    return {
+                        _id: item._id,
+                        title: item.title,
+                        author: item.author || playlist.author,
+                        description: item.description,
+                        coverImage: item.coverImage || playlist.coverImage,
+                        audioUrl: item.audioUrl,
+                        duration: item.duration,
+                        isMembersOnly: item.isMembersOnly || playlist.isMembersOnly,
+                        recentPlays: t.recentPlays,
+                        lastPlayed: t.lastPlayed,
+                        playlist: {
+                            _id: playlist._id,
+                            title: playlist.title,
+                            type: playlist.type,
+                            coverImage: playlist.coverImage,
+                        },
+                        itemIndex: t._id.itemIndex,
+                    };
+                })
+                .filter(Boolean);
+            
+            console.log(`📈 Trending episodes (${timeWindow}): ${trendingEpisodes.length} items`);
+            return res.json(trendingEpisodes);
+        }
+        
+        // Fallback: If no recent play events, use playCount from items
         const playlists = await Playlist.find({ 
             status: 'published',
-            'items.0': { $exists: true } // Has at least one item
+            'items.0': { $exists: true }
         }).lean();
         
-        // Extract all episodes with their play counts
         const allEpisodes = [];
-        
         for (const playlist of playlists) {
             for (let i = 0; i < (playlist.items || []).length; i++) {
                 const item = playlist.items[i];
-                // Only include items with play counts > 0
                 if (item.playCount && item.playCount > 0) {
                     allEpisodes.push({
                         _id: item._id,
@@ -145,31 +217,45 @@ router.get('/trending-episodes', async (req, res) => {
                         duration: item.duration,
                         isMembersOnly: item.isMembersOnly || playlist.isMembersOnly,
                         playCount: item.playCount || 0,
-                        // Parent playlist info
                         playlist: {
                             _id: playlist._id,
                             title: playlist.title,
                             type: playlist.type,
                             coverImage: playlist.coverImage,
                         },
-                        // Index of this item in the playlist for direct playback
                         itemIndex: i,
                     });
                 }
             }
         }
         
-        // Sort by play count (highest first) and take top N
         allEpisodes.sort((a, b) => b.playCount - a.playCount);
         const trendingEpisodes = allEpisodes.slice(0, limit);
         
-        console.log(`📈 Trending episodes: ${trendingEpisodes.length} items (top ${limit})`);
+        console.log(`📈 Trending episodes (fallback): ${trendingEpisodes.length} items`);
         res.json(trendingEpisodes);
     } catch (error) {
         console.error('Error fetching trending episodes:', error);
         res.status(500).json({ message: error.message });
     }
 });
+
+// Helper to parse time window string to milliseconds
+function parseTimeWindow(window) {
+    const match = window.match(/^(\d+)(h|d|w|m)$/);
+    if (!match) return 7 * 24 * 60 * 60 * 1000; // Default 7 days
+    
+    const value = parseInt(match[1]);
+    const unit = match[2];
+    
+    switch (unit) {
+        case 'h': return value * 60 * 60 * 1000;
+        case 'd': return value * 24 * 60 * 60 * 1000;
+        case 'w': return value * 7 * 24 * 60 * 60 * 1000;
+        case 'm': return value * 30 * 24 * 60 * 60 * 1000;
+        default: return 7 * 24 * 60 * 60 * 1000;
+    }
+}
 
 // PUT toggle featured status for a specific episode
 router.put('/:playlistId/items/:itemId/featured', async (req, res) => {

@@ -105,6 +105,7 @@ app.use('/api/user-playlists', require('./routes/userPlaylists'));
 app.use('/api/ai', require('./routes/aiGenerate'));
 app.use('/api/book-comments', require('./routes/bookComments'));
 app.use('/api/playlist-comments', require('./routes/playlistComments'));
+app.use('/api/play-events', require('./routes/playEvents'));
 
 // ===========================================
 // HEALTH & STATUS ENDPOINTS

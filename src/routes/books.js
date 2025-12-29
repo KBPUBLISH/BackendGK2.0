@@ -149,20 +149,79 @@ router.get('/top-rated', async (req, res) => {
     }
 });
 
-// GET trending books (top books by read count)
+// GET trending books (top books by recent play count within time window)
 router.get('/trending', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 10;
+        const timeWindow = req.query.timeWindow || '7d'; // Default 7 days
         
+        // Parse time window to milliseconds
+        const windowMs = parseTimeWindow(timeWindow);
+        const since = new Date(Date.now() - windowMs);
+        
+        // Import PlayEvent model
+        const PlayEvent = require('../models/PlayEvent');
+        
+        // Get trending books based on recent play events
+        const trendingCounts = await PlayEvent.aggregate([
+            { 
+                $match: { 
+                    contentType: 'book',
+                    playedAt: { $gte: since }
+                } 
+            },
+            { 
+                $group: { 
+                    _id: '$contentId',
+                    recentPlays: { $sum: 1 },
+                    lastPlayed: { $max: '$playedAt' }
+                } 
+            },
+            { $sort: { recentPlays: -1 } },
+            { $limit: limit }
+        ]);
+        
+        // If we have trending data, fetch the book details
+        if (trendingCounts.length > 0) {
+            const bookIds = trendingCounts.map(t => t._id);
+            const books = await Book.find({ 
+                _id: { $in: bookIds },
+                status: 'published'
+            }).lean();
+            
+            // Create a map for quick lookup
+            const bookMap = {};
+            books.forEach(book => {
+                if (book.files && book.files.coverImage) {
+                    book.coverImage = book.files.coverImage;
+                }
+                bookMap[book._id.toString()] = book;
+            });
+            
+            // Sort by trending count and format
+            const formattedBooks = trendingCounts
+                .map(t => {
+                    const book = bookMap[t._id.toString()];
+                    if (book) {
+                        return { ...book, recentPlays: t.recentPlays, lastPlayed: t.lastPlayed };
+                    }
+                    return null;
+                })
+                .filter(Boolean);
+            
+            console.log(`📚 Trending books (${timeWindow}): ${formattedBooks.length} items`);
+            return res.json(formattedBooks);
+        }
+        
+        // Fallback: If no recent play events, use readCount
         const books = await Book.find({ 
             status: 'published',
-            readCount: { $gt: 0 } // Only books that have been read
+            readCount: { $gt: 0 }
         })
-        .sort({ readCount: -1 }) // Sort by most reads first
+        .sort({ readCount: -1 })
         .limit(limit)
         .lean();
         
-        // Add coverImage for backward compatibility
         const formattedBooks = books.map(book => {
             if (book.files && book.files.coverImage) {
                 book.coverImage = book.files.coverImage;
@@ -170,13 +229,30 @@ router.get('/trending', async (req, res) => {
             return book;
         });
         
-        console.log(`📚 Trending books: ${formattedBooks.length} items (top ${limit})`);
+        console.log(`📚 Trending books (fallback): ${formattedBooks.length} items`);
         res.json(formattedBooks);
     } catch (error) {
         console.error('Error fetching trending books:', error);
         res.status(500).json({ message: error.message });
     }
 });
+
+// Helper to parse time window string to milliseconds
+function parseTimeWindow(window) {
+    const match = window.match(/^(\d+)(h|d|w|m)$/);
+    if (!match) return 7 * 24 * 60 * 60 * 1000; // Default 7 days
+    
+    const value = parseInt(match[1]);
+    const unit = match[2];
+    
+    switch (unit) {
+        case 'h': return value * 60 * 60 * 1000;
+        case 'd': return value * 24 * 60 * 60 * 1000;
+        case 'w': return value * 7 * 24 * 60 * 60 * 1000;
+        case 'm': return value * 30 * 24 * 60 * 60 * 1000;
+        default: return 7 * 24 * 60 * 60 * 1000;
+    }
+}
 
 // GET single book
 router.get('/:id', async (req, res) => {
