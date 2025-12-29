@@ -36,8 +36,16 @@ router.get('/', async (req, res) => {
             .populate({
                 path: 'books.book',
                 select: 'title coverImage files author description minAge maxAge isMembersOnly status',
+                match: { status: 'published' }, // Only include published books
             })
             .sort({ displayOrder: 1, createdAt: -1 });
+        
+        // Filter out null books (drafts that were excluded by match)
+        series.forEach(s => {
+            if (s.books) {
+                s.books = s.books.filter(b => b.book !== null);
+            }
+        });
         
         res.json(series);
     } catch (error) {
@@ -59,10 +67,18 @@ router.get('/featured', async (req, res) => {
             .populate('category', 'name')
             .populate({
                 path: 'books.book',
-                select: 'title coverImage files author description minAge maxAge isMembersOnly',
+                select: 'title coverImage files author description minAge maxAge isMembersOnly status',
+                match: { status: 'published' }, // Only include published books
             })
             .sort({ displayOrder: 1 })
             .limit(10);
+        
+        // Filter out null books (drafts that were excluded by match)
+        series.forEach(s => {
+            if (s.books) {
+                s.books = s.books.filter(b => b.book !== null);
+            }
+        });
         
         res.json(series);
     } catch (error) {
@@ -82,6 +98,7 @@ router.get('/:id', async (req, res) => {
             .populate({
                 path: 'books.book',
                 select: 'title coverImage files author description minAge maxAge isMembersOnly status pages',
+                match: { status: 'published' }, // Only include published books
                 populate: {
                     path: 'pages',
                     select: 'pageNumber',
@@ -90,6 +107,11 @@ router.get('/:id', async (req, res) => {
         
         if (!series) {
             return res.status(404).json({ error: 'Book series not found' });
+        }
+        
+        // Filter out null books (drafts that were excluded by match)
+        if (series.books) {
+            series.books = series.books.filter(b => b.book !== null);
         }
         
         // Increment view count
