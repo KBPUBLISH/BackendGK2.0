@@ -9,27 +9,46 @@ router.get('/', async (req, res) => {
     try {
         const { type } = req.query;
         
+        console.log('📚 GET /api/categories - type:', type);
+        
         // Build filter based on query params
-        const filter = {};
+        let filter = {};
         if (type) {
             // Map type query param to contentType field
             // Accept both 'book'/'audio' (lowercase) and 'Book'/'Audio' (proper case)
             const normalizedType = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
             if (normalizedType === 'Book') {
                 // For 'Book' type, include categories with contentType='Book' OR no contentType (legacy)
+                // Also include categories with empty string contentType
                 filter.$or = [
                     { contentType: 'Book' },
                     { contentType: { $exists: false } },
-                    { contentType: null }
+                    { contentType: null },
+                    { contentType: '' }
                 ];
             } else if (normalizedType === 'Audio') {
                 filter.contentType = 'Audio';
             }
         }
         
+        console.log('📚 Category filter:', JSON.stringify(filter));
+        
         const categories = await Category.find(filter).sort({ name: 1 });
+        console.log('📚 Found categories:', categories.length);
+        
+        // If no categories found with filter, return all categories as fallback
+        if (categories.length === 0 && type) {
+            const allCategories = await Category.find({}).sort({ name: 1 });
+            console.log('📚 Filter returned 0 results, falling back to all categories:', allCategories.length);
+            if (allCategories.length > 0) {
+                console.log('📚 Sample category contentTypes:', allCategories.slice(0, 3).map(c => ({ name: c.name, contentType: c.contentType })));
+            }
+            return res.json(allCategories);
+        }
+        
         res.json(categories);
     } catch (error) {
+        console.error('❌ Error fetching categories:', error);
         res.status(500).json({ error: error.message });
     }
 });
