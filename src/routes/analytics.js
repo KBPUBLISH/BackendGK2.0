@@ -177,6 +177,9 @@ router.get('/users', async (req, res) => {
             });
         }
 
+        // Define statsUsers BEFORE using it (fix for 500 error)
+        const statsUsers = timeRangeStart ? filteredUsers : allUsers;
+
         // Count new accounts by time period
         const newToday = allUsers.filter(u => new Date(u.createdAt) >= todayStart).length;
         const newThisWeek = allUsers.filter(u => new Date(u.createdAt) >= weekStart).length;
@@ -187,7 +190,7 @@ router.get('/users', async (req, res) => {
         const activeThisWeek = allUsers.filter(u => u.lastActiveAt && new Date(u.lastActiveAt) >= weekStart).length;
         const activeThisMonth = allUsers.filter(u => u.lastActiveAt && new Date(u.lastActiveAt) >= monthStart).length;
 
-        // Subscription breakdown (use filteredUsers for time-range stats)
+        // Subscription breakdown (use statsUsers for time-range stats)
         const subscriptionStats = {
             free: statsUsers.filter(u => u.subscriptionStatus === 'free').length,
             trial: statsUsers.filter(u => u.subscriptionStatus === 'trial').length,
@@ -196,7 +199,7 @@ router.get('/users', async (req, res) => {
             expired: statsUsers.filter(u => u.subscriptionStatus === 'expired').length,
         };
 
-        // Platform breakdown (use filteredUsers for time-range stats)
+        // Platform breakdown (use statsUsers for time-range stats)
         const platformStats = {
             ios: statsUsers.filter(u => u.platform === 'ios').length,
             android: statsUsers.filter(u => u.platform === 'android').length,
@@ -204,8 +207,7 @@ router.get('/users', async (req, res) => {
             unknown: statsUsers.filter(u => !u.platform || u.platform === 'unknown').length,
         };
 
-        // Calculate totals (use filteredUsers for time-range stats)
-        const statsUsers = timeRangeStart ? filteredUsers : allUsers;
+        // Calculate totals (use statsUsers for time-range stats)
         const totalCoins = statsUsers.reduce((sum, u) => sum + (u.coins || 0), 0);
         const totalKids = statsUsers.reduce((sum, u) => sum + (u.kidProfiles?.length || 0), 0);
         const totalSessions = statsUsers.reduce((sum, u) => sum + (u.stats?.totalSessions || 0), 0);
