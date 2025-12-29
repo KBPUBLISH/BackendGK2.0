@@ -12,16 +12,38 @@ const OnboardingEvent = require('../models/OnboardingEvent');
  * Query params:
  *   sortBy: 'createdAt' (default) | 'lastActiveAt' | 'sessions' | 'coins'
  *   sortOrder: 'desc' (default) | 'asc'
+ *   timeRange: '1d' | '1w' | '1m' | '3m' | 'all' (default: 'all')
  */
 router.get('/users', async (req, res) => {
     try {
-        const { sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+        const { sortBy = 'createdAt', sortOrder = 'desc', timeRange = 'all' } = req.query;
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekStart = new Date(todayStart);
         weekStart.setDate(weekStart.getDate() - 7);
         const monthStart = new Date(todayStart);
         monthStart.setMonth(monthStart.getMonth() - 1);
+        
+        // Calculate time range filter date
+        let timeRangeStart = null;
+        switch (timeRange) {
+            case '1d':
+                timeRangeStart = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 1 day ago
+                break;
+            case '1w':
+                timeRangeStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+                break;
+            case '1m':
+                timeRangeStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+                break;
+            case '3m':
+                timeRangeStart = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000); // 90 days ago
+                break;
+            case 'all':
+            default:
+                timeRangeStart = null; // No filter
+                break;
+        }
 
         // Get users from AppUser collection (app-specific data)
         const appUsers = await AppUser.find({})
@@ -140,7 +162,20 @@ router.get('/users', async (req, res) => {
             return isAsc ? valA - valB : valB - valA;
         });
 
-        const allUsers = mergedUsers;
+        // Apply time range filter if specified
+        let allUsers = mergedUsers;
+        let filteredUsers = mergedUsers;
+        
+        if (timeRangeStart) {
+            // For time-filtered stats, use users active within the time range
+            filteredUsers = mergedUsers.filter(u => {
+                const lastActive = u.lastActiveAt ? new Date(u.lastActiveAt) : null;
+                const created = u.createdAt ? new Date(u.createdAt) : null;
+                // Include user if they were active OR created within the time range
+                return (lastActive && lastActive >= timeRangeStart) || 
+                       (created && created >= timeRangeStart);
+            });
+        }
 
         // Count new accounts by time period
         const newToday = allUsers.filter(u => new Date(u.createdAt) >= todayStart).length;
@@ -152,34 +187,35 @@ router.get('/users', async (req, res) => {
         const activeThisWeek = allUsers.filter(u => u.lastActiveAt && new Date(u.lastActiveAt) >= weekStart).length;
         const activeThisMonth = allUsers.filter(u => u.lastActiveAt && new Date(u.lastActiveAt) >= monthStart).length;
 
-        // Subscription breakdown
+        // Subscription breakdown (use filteredUsers for time-range stats)
         const subscriptionStats = {
-            free: allUsers.filter(u => u.subscriptionStatus === 'free').length,
-            trial: allUsers.filter(u => u.subscriptionStatus === 'trial').length,
-            active: allUsers.filter(u => u.subscriptionStatus === 'active').length,
-            cancelled: allUsers.filter(u => u.subscriptionStatus === 'cancelled').length,
-            expired: allUsers.filter(u => u.subscriptionStatus === 'expired').length,
+            free: statsUsers.filter(u => u.subscriptionStatus === 'free').length,
+            trial: statsUsers.filter(u => u.subscriptionStatus === 'trial').length,
+            active: statsUsers.filter(u => u.subscriptionStatus === 'active').length,
+            cancelled: statsUsers.filter(u => u.subscriptionStatus === 'cancelled').length,
+            expired: statsUsers.filter(u => u.subscriptionStatus === 'expired').length,
         };
 
-        // Platform breakdown
+        // Platform breakdown (use filteredUsers for time-range stats)
         const platformStats = {
-            ios: allUsers.filter(u => u.platform === 'ios').length,
-            android: allUsers.filter(u => u.platform === 'android').length,
-            web: allUsers.filter(u => u.platform === 'web').length,
-            unknown: allUsers.filter(u => !u.platform || u.platform === 'unknown').length,
+            ios: statsUsers.filter(u => u.platform === 'ios').length,
+            android: statsUsers.filter(u => u.platform === 'android').length,
+            web: statsUsers.filter(u => u.platform === 'web').length,
+            unknown: statsUsers.filter(u => !u.platform || u.platform === 'unknown').length,
         };
 
-        // Calculate totals
-        const totalCoins = allUsers.reduce((sum, u) => sum + (u.coins || 0), 0);
-        const totalKids = allUsers.reduce((sum, u) => sum + (u.kidProfiles?.length || 0), 0);
-        const totalSessions = allUsers.reduce((sum, u) => sum + (u.stats?.totalSessions || 0), 0);
-        const totalTimeSpentMinutes = Math.round(allUsers.reduce((sum, u) => sum + (u.stats?.totalTimeSpent || 0), 0) / 60);
-        const totalBooksRead = allUsers.reduce((sum, u) => sum + (u.stats?.booksRead || 0), 0);
-        const totalPagesRead = allUsers.reduce((sum, u) => sum + (u.stats?.pagesRead || 0), 0);
-        const totalPlaylistsPlayed = allUsers.reduce((sum, u) => sum + (u.stats?.playlistsPlayed || 0), 0);
-        const totalListeningTimeMinutes = Math.round(allUsers.reduce((sum, u) => sum + (u.stats?.audioListeningTime || 0), 0) / 60);
-        const totalLessonsCompleted = allUsers.reduce((sum, u) => sum + (u.stats?.lessonsCompleted || 0), 0);
-        const totalGamesPlayed = allUsers.reduce((sum, u) => sum + (u.stats?.gamesPlayed || 0), 0);
+        // Calculate totals (use filteredUsers for time-range stats)
+        const statsUsers = timeRangeStart ? filteredUsers : allUsers;
+        const totalCoins = statsUsers.reduce((sum, u) => sum + (u.coins || 0), 0);
+        const totalKids = statsUsers.reduce((sum, u) => sum + (u.kidProfiles?.length || 0), 0);
+        const totalSessions = statsUsers.reduce((sum, u) => sum + (u.stats?.totalSessions || 0), 0);
+        const totalTimeSpentMinutes = Math.round(statsUsers.reduce((sum, u) => sum + (u.stats?.totalTimeSpent || 0), 0) / 60);
+        const totalBooksRead = statsUsers.reduce((sum, u) => sum + (u.stats?.booksRead || 0), 0);
+        const totalPagesRead = statsUsers.reduce((sum, u) => sum + (u.stats?.pagesRead || 0), 0);
+        const totalPlaylistsPlayed = statsUsers.reduce((sum, u) => sum + (u.stats?.playlistsPlayed || 0), 0);
+        const totalListeningTimeMinutes = Math.round(statsUsers.reduce((sum, u) => sum + (u.stats?.audioListeningTime || 0), 0) / 60);
+        const totalLessonsCompleted = statsUsers.reduce((sum, u) => sum + (u.stats?.lessonsCompleted || 0), 0);
+        const totalGamesPlayed = statsUsers.reduce((sum, u) => sum + (u.stats?.gamesPlayed || 0), 0);
 
         // Helper to format dates safely
         const formatDate = (dateVal) => {
@@ -226,9 +262,9 @@ router.get('/users', async (req, res) => {
             source: user.source, // 'auth' = has login account, 'app' = anonymous/app-only
         }));
 
-        // Count by source
-        const authUserCount = allUsers.filter(u => u.source === 'auth').length;
-        const appOnlyUserCount = allUsers.filter(u => u.source === 'app').length;
+        // Count by source (use statsUsers for time-range stats)
+        const authUserCount = statsUsers.filter(u => u.source === 'auth').length;
+        const appOnlyUserCount = statsUsers.filter(u => u.source === 'app').length;
 
         // Get daily signups for the past 30 days
         const dailySignups = [];
@@ -270,8 +306,11 @@ router.get('/users', async (req, res) => {
 
         res.json({
             success: true,
+            timeRange: timeRange || 'all',
+            timeRangeStart: timeRangeStart ? timeRangeStart.toISOString() : null,
             summary: {
-                totalUsers: allUsers.length,
+                totalUsers: statsUsers.length,
+                totalUsersAllTime: allUsers.length, // Always include all-time count
                 authUsers: authUserCount,      // Users with login accounts
                 anonymousUsers: appOnlyUserCount, // Anonymous/app-only users
                 totalCoins,
