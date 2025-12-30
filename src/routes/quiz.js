@@ -48,7 +48,7 @@ Rules for this age group:
 // POST /api/quiz/generate - Generate a quiz for a book using AI
 router.post('/generate', async (req, res) => {
     try {
-        const { bookId, age } = req.body;
+        const { bookId, age, attemptNumber = 1 } = req.body;
 
         if (!bookId) {
             return res.status(400).json({ message: 'bookId is required' });
@@ -57,20 +57,22 @@ router.post('/generate', async (req, res) => {
         // Determine age group
         const userAge = parseInt(age) || 6; // Default to 6 if not provided
         const ageGroup = BookQuiz.getAgeGroup(userAge);
+        const currentAttempt = parseInt(attemptNumber) || 1;
         
-        console.log(`📚 Quiz request for book ${bookId}, age ${userAge} (group: ${ageGroup})`);
+        console.log(`📚 Quiz request for book ${bookId}, age ${userAge} (group: ${ageGroup}), attempt ${currentAttempt}`);
 
         // Check if quiz already exists for this book
         let existingQuiz = await BookQuiz.findOne({ bookId });
         
-        // Check if we already have questions for this age group
-        if (existingQuiz && existingQuiz.hasQuestionsForAge(userAge)) {
-            console.log(`📚 Quiz already exists for book ${bookId}, age group ${ageGroup}`);
+        // Check if we already have questions for this age group and attempt
+        if (existingQuiz && existingQuiz.hasQuestionsForAge(userAge, currentAttempt)) {
+            console.log(`📚 Quiz already exists for book ${bookId}, age group ${ageGroup}, attempt ${currentAttempt}`);
             return res.json({
                 quiz: {
                     ...existingQuiz.toObject(),
-                    questions: existingQuiz.getQuestionsForAge(userAge),
-                    ageGroup
+                    questions: existingQuiz.getQuestionsForAge(userAge, currentAttempt),
+                    ageGroup,
+                    attemptNumber: currentAttempt
                 },
                 cached: true
             });
@@ -126,6 +128,17 @@ router.post('/generate', async (req, res) => {
         }
 
         const agePrompt = getAgeAppropriatePrompt(userAge, ageGroup);
+        
+        // For attempt 2, instruct AI to create completely different questions
+        const attemptInstruction = currentAttempt === 2 
+            ? `\n\nIMPORTANT: This is a SECOND ATTEMPT quiz. Create COMPLETELY DIFFERENT questions from typical first-attempt questions. Focus on:
+- Different story details and moments
+- Different character perspectives
+- Different aspects of the plot
+- Questions about the ending and lessons learned
+- More creative and thoughtful questions
+Do NOT repeat common or obvious questions about the story.`
+            : '';
 
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
@@ -136,7 +149,7 @@ router.post('/generate', async (req, res) => {
                         role: 'system',
                         content: `${agePrompt}
 
-Create exactly 6 multiple-choice questions based on the story content provided.
+Create exactly 6 multiple-choice questions based on the story content provided.${attemptInstruction}
 
 General Rules:
 1. Create exactly 6 multiple-choice questions
@@ -204,17 +217,18 @@ Return ONLY the JSON array, no explanations or markdown.`
             });
         }
         
-        // Add questions for this age group
-        existingQuiz.setQuestionsForAge(userAge, questions);
+        // Add questions for this age group and attempt
+        existingQuiz.setQuestionsForAge(userAge, questions, currentAttempt);
         await existingQuiz.save();
 
-        console.log(`✅ Quiz generated successfully for book: ${book.title}, age group: ${ageGroup}`);
+        console.log(`✅ Quiz generated successfully for book: ${book.title}, age group: ${ageGroup}, attempt ${currentAttempt}`);
 
         res.json({
             quiz: {
                 ...existingQuiz.toObject(),
-                questions, // Return the questions for this age group
-                ageGroup
+                questions, // Return the questions for this age group and attempt
+                ageGroup,
+                attemptNumber: currentAttempt
             },
             cached: false
         });
@@ -228,7 +242,7 @@ Return ONLY the JSON array, no explanations or markdown.`
 // POST /api/quiz/generate-first - Generate just the first question quickly
 router.post('/generate-first', async (req, res) => {
     try {
-        const { bookId, age } = req.body;
+        const { bookId, age, attemptNumber = 1 } = req.body;
 
         if (!bookId) {
             return res.status(400).json({ message: 'bookId is required' });
@@ -236,16 +250,18 @@ router.post('/generate-first', async (req, res) => {
 
         const userAge = parseInt(age) || 6;
         const ageGroup = BookQuiz.getAgeGroup(userAge);
+        const currentAttempt = parseInt(attemptNumber) || 1;
 
-        // Check if quiz already exists
+        // Check if quiz already exists for this attempt
         let existingQuiz = await BookQuiz.findOne({ bookId });
-        if (existingQuiz && existingQuiz.hasQuestionsForAge(userAge)) {
-            const questions = existingQuiz.getQuestionsForAge(userAge);
+        if (existingQuiz && existingQuiz.hasQuestionsForAge(userAge, currentAttempt)) {
+            const questions = existingQuiz.getQuestionsForAge(userAge, currentAttempt);
             return res.json({
                 firstQuestion: questions[0],
                 totalQuestions: questions.length,
                 cached: true,
-                ageGroup
+                ageGroup,
+                attemptNumber: currentAttempt
             });
         }
 
@@ -286,9 +302,15 @@ router.post('/generate-first', async (req, res) => {
         }
 
         // Generate just ONE question quickly
-        console.log(`⚡ Quick-generating first question for book: ${book.title}`);
+        console.log(`⚡ Quick-generating first question for book: ${book.title}, attempt ${currentAttempt}`);
         
         const agePrompt = getAgeAppropriatePrompt(userAge, ageGroup);
+        
+        // For attempt 2, instruct AI to create a different type of question
+        const attemptInstruction = currentAttempt === 2 
+            ? `\n\nIMPORTANT: This is a SECOND ATTEMPT quiz. Create a DIFFERENT warm-up question than typical. Focus on a unique detail or moment from the story that isn't commonly asked about.`
+            : '';
+        
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
             {
@@ -298,7 +320,7 @@ router.post('/generate-first', async (req, res) => {
                         role: 'system',
                         content: `${agePrompt}
 
-Create exactly 1 multiple-choice question based on the story. This should be an easy warm-up question about the beginning of the story.
+Create exactly 1 multiple-choice question based on the story. This should be an easy warm-up question about the beginning of the story.${attemptInstruction}
 
 Rules:
 1. Create exactly 1 question
@@ -343,13 +365,14 @@ Return ONLY a JSON object (not array):
             return res.status(500).json({ message: 'Failed to parse question' });
         }
 
-        console.log(`✅ First question generated for: ${book.title}`);
+        console.log(`✅ First question generated for: ${book.title}, attempt ${currentAttempt}`);
 
         res.json({
             firstQuestion,
             totalQuestions: 6, // We'll generate 6 total
             cached: false,
             ageGroup,
+            attemptNumber: currentAttempt,
             // Signal that remaining questions need to be generated
             needsRemainingQuestions: true
         });
@@ -363,7 +386,7 @@ Return ONLY a JSON object (not array):
 // POST /api/quiz/generate-remaining - Generate remaining questions (called in background)
 router.post('/generate-remaining', async (req, res) => {
     try {
-        const { bookId, age, firstQuestion } = req.body;
+        const { bookId, age, firstQuestion, attemptNumber = 1 } = req.body;
 
         if (!bookId) {
             return res.status(400).json({ message: 'bookId is required' });
@@ -371,16 +394,18 @@ router.post('/generate-remaining', async (req, res) => {
 
         const userAge = parseInt(age) || 6;
         const ageGroup = BookQuiz.getAgeGroup(userAge);
+        const currentAttempt = parseInt(attemptNumber) || 1;
 
-        // Check if full quiz already exists
+        // Check if full quiz already exists for this attempt
         let existingQuiz = await BookQuiz.findOne({ bookId });
-        if (existingQuiz && existingQuiz.hasQuestionsForAge(userAge)) {
-            const questions = existingQuiz.getQuestionsForAge(userAge);
+        if (existingQuiz && existingQuiz.hasQuestionsForAge(userAge, currentAttempt)) {
+            const questions = existingQuiz.getQuestionsForAge(userAge, currentAttempt);
             if (questions.length >= 6) {
                 return res.json({
                     questions,
                     cached: true,
-                    ageGroup
+                    ageGroup,
+                    attemptNumber: currentAttempt
                 });
             }
         }
@@ -418,9 +443,21 @@ router.post('/generate-remaining', async (req, res) => {
         }
 
         // Generate remaining 5 questions
-        console.log(`📝 Generating remaining questions for: ${book.title}`);
+        console.log(`📝 Generating remaining questions for: ${book.title}, attempt ${currentAttempt}`);
         
         const agePrompt = getAgeAppropriatePrompt(userAge, ageGroup);
+        
+        // For attempt 2, instruct AI to create completely different questions
+        const attemptInstruction = currentAttempt === 2 
+            ? `\n\nIMPORTANT: This is a SECOND ATTEMPT quiz. Create COMPLETELY DIFFERENT questions from typical first-attempt questions. Focus on:
+- Different story details and moments
+- Different character perspectives  
+- Different aspects of the plot
+- Questions about the ending and lessons learned
+- More creative and thoughtful questions
+Do NOT repeat common or obvious questions about the story.`
+            : '';
+        
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
             {
@@ -430,7 +467,7 @@ router.post('/generate-remaining', async (req, res) => {
                         role: 'system',
                         content: `${agePrompt}
 
-Create exactly 5 more multiple-choice questions. The first question was already asked: "${firstQuestion?.question || 'a warm-up question'}"
+Create exactly 5 more multiple-choice questions. The first question was already asked: "${firstQuestion?.question || 'a warm-up question'}"${attemptInstruction}
 
 Rules:
 1. Create exactly 5 NEW questions (different from the first one)
@@ -492,15 +529,16 @@ Return ONLY a JSON array:
                 attempts: []
             });
         }
-        existingQuiz.setQuestionsForAge(userAge, allQuestions);
+        existingQuiz.setQuestionsForAge(userAge, allQuestions, currentAttempt);
         await existingQuiz.save();
 
-        console.log(`✅ All ${allQuestions.length} questions saved for: ${book.title}`);
+        console.log(`✅ All ${allQuestions.length} questions saved for: ${book.title}, attempt ${currentAttempt}`);
 
         res.json({
             questions: allQuestions,
             cached: false,
-            ageGroup
+            ageGroup,
+            attemptNumber: currentAttempt
         });
 
     } catch (error) {
@@ -518,7 +556,7 @@ Return ONLY a JSON array:
 router.get('/:bookId', async (req, res) => {
     try {
         const { bookId } = req.params;
-        const { userId, age } = req.query;
+        const { userId, age, attemptNumber } = req.query;
 
         const quiz = await BookQuiz.findOne({ bookId });
         
@@ -528,15 +566,17 @@ router.get('/:bookId', async (req, res) => {
 
         const userAge = parseInt(age) || 6;
         const ageGroup = BookQuiz.getAgeGroup(userAge);
+        const currentAttempt = parseInt(attemptNumber) || 1;
         
-        // Get questions for the user's age group
-        const questions = quiz.getQuestionsForAge(userAge);
+        // Get questions for the user's age group and attempt
+        const questions = quiz.getQuestionsForAge(userAge, currentAttempt);
         
         if (!questions || questions.length === 0) {
             return res.status(404).json({ 
-                message: 'Quiz not found for this age group',
+                message: 'Quiz not found for this age group and attempt',
                 needsGeneration: true,
-                ageGroup
+                ageGroup,
+                attemptNumber: currentAttempt
             });
         }
 
@@ -547,8 +587,9 @@ router.get('/:bookId', async (req, res) => {
         res.json({
             quiz: {
                 ...quiz.toObject(),
-                questions, // Return only the age-appropriate questions
-                ageGroup
+                questions, // Return only the age-appropriate questions for this attempt
+                ageGroup,
+                attemptNumber: currentAttempt
             },
             attemptCount,
             canTakeQuiz,
@@ -565,7 +606,7 @@ router.get('/:bookId', async (req, res) => {
 router.post('/:bookId/submit', async (req, res) => {
     try {
         const { bookId } = req.params;
-        const { userId, answers, age } = req.body;
+        const { userId, answers, age, attemptNumber } = req.body;
 
         if (!userId) {
             return res.status(400).json({ message: 'userId is required' });
@@ -590,12 +631,13 @@ router.post('/:bookId/submit', async (req, res) => {
             });
         }
 
-        // Get questions for the user's age group
+        // Get questions for the user's age group and current attempt
         const userAge = parseInt(age) || 6;
-        const questions = quiz.getQuestionsForAge(userAge);
+        const currentAttempt = parseInt(attemptNumber) || (quiz.getUserAttemptCount(userId) + 1);
+        const questions = quiz.getQuestionsForAge(userAge, currentAttempt);
         
         if (!questions || questions.length === 0) {
-            return res.status(404).json({ message: 'Quiz questions not found for this age group' });
+            return res.status(404).json({ message: 'Quiz questions not found for this age group and attempt' });
         }
 
         // Calculate score
