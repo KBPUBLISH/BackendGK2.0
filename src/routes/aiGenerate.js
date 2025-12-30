@@ -719,5 +719,234 @@ function getFallbackAudiobookComments() {
     ];
 }
 
+// ===========================
+// RADIO SCRIPT GENERATION
+// ===========================
+
+// POST /api/ai-generate/radio-script - Generate a radio host script for introducing a song
+router.post('/radio-script', async (req, res) => {
+    try {
+        const { 
+            hostName, 
+            hostPersonality, 
+            nextSongTitle, 
+            nextSongArtist, 
+            previousSongTitle, 
+            previousSongArtist,
+            targetDuration = 30, // Target duration in seconds
+            stationName = 'Praise Station Radio'
+        } = req.body;
+
+        if (!nextSongTitle) {
+            return res.status(400).json({ message: 'nextSongTitle is required' });
+        }
+
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (!geminiKey) {
+            console.log('⚠️ No Gemini API key, returning fallback radio script');
+            return res.json({
+                script: getFallbackRadioScript(hostName, nextSongTitle, nextSongArtist),
+                source: 'fallback',
+            });
+        }
+
+        // Calculate target word count (approximately 2.5 words per second for natural speech)
+        const targetWordCount = Math.round(targetDuration * 2.5);
+
+        const prompt = `You are ${hostName || 'a friendly radio host'} on "${stationName}", a Christian family radio station.
+
+PERSONALITY: ${hostPersonality || 'Warm, encouraging, and uplifting. You love sharing God\'s love through music and bringing joy to families.'}
+
+YOUR TASK: Write a short radio host segment that will be spoken aloud. The segment should:
+1. ${previousSongTitle ? `Briefly reflect on the previous song "${previousSongTitle}"${previousSongArtist ? ` by ${previousSongArtist}` : ''} (1 sentence max)` : 'Start with a warm greeting or uplifting thought'}
+2. Share a brief encouraging message, Bible verse reference, or uplifting thought (1-2 sentences)
+3. Naturally introduce the upcoming song "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
+
+REQUIREMENTS:
+- Target length: approximately ${targetWordCount} words (about ${targetDuration} seconds when spoken)
+- Use natural, conversational language suitable for speaking aloud
+- Keep it family-friendly and appropriate for all ages
+- Sound warm and genuine, not scripted or robotic
+- Include enthusiasm but don't be over-the-top
+- You may reference God, Jesus, faith, blessings, or scripture naturally
+- Do NOT include any stage directions, sound effects notes, or parenthetical instructions
+- Write ONLY the words the host will speak
+
+Respond with ONLY the script text, nothing else.`;
+
+        console.log(`📻 Generating radio script for "${nextSongTitle}" with host ${hostName || 'default'}`);
+
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.8,
+                        maxOutputTokens: 300,
+                    },
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            console.error('❌ Gemini API error:', await response.text());
+            return res.json({
+                script: getFallbackRadioScript(hostName, nextSongTitle, nextSongArtist),
+                source: 'fallback',
+            });
+        }
+
+        const data = await response.json();
+        const scriptText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+        if (!scriptText) {
+            console.log('⚠️ Empty response from Gemini, using fallback');
+            return res.json({
+                script: getFallbackRadioScript(hostName, nextSongTitle, nextSongArtist),
+                source: 'fallback',
+            });
+        }
+
+        // Clean up the script (remove any accidental stage directions)
+        const cleanedScript = scriptText
+            .replace(/\*[^*]+\*/g, '') // Remove *actions*
+            .replace(/\([^)]+\)/g, '') // Remove (parentheticals)
+            .replace(/\[[^\]]+\]/g, '') // Remove [brackets]
+            .replace(/\n\s*\n/g, ' ') // Replace double newlines with space
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .trim();
+
+        console.log(`✅ Generated radio script: ${cleanedScript.substring(0, 100)}...`);
+
+        res.json({
+            script: cleanedScript,
+            source: 'ai',
+            wordCount: cleanedScript.split(/\s+/).length,
+            estimatedDuration: Math.round(cleanedScript.split(/\s+/).length / 2.5),
+        });
+
+    } catch (error) {
+        console.error('Generate radio script error:', error);
+        res.json({
+            script: getFallbackRadioScript(req.body?.hostName, req.body?.nextSongTitle, req.body?.nextSongArtist),
+            source: 'fallback',
+        });
+    }
+});
+
+// POST /api/ai-generate/radio-scripts-batch - Generate multiple radio scripts at once
+router.post('/radio-scripts-batch', async (req, res) => {
+    try {
+        const { segments, hostPersonality, stationName, targetDuration = 30 } = req.body;
+
+        if (!segments || !Array.isArray(segments) || segments.length === 0) {
+            return res.status(400).json({ message: 'segments array is required' });
+        }
+
+        const geminiKey = process.env.GEMINI_API_KEY;
+        const results = [];
+
+        for (let i = 0; i < segments.length; i++) {
+            const segment = segments[i];
+            
+            if (segment.type !== 'host_break') {
+                results.push({ index: i, skipped: true });
+                continue;
+            }
+
+            try {
+                // Small delay between requests to avoid rate limiting
+                if (i > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+
+                const scriptResponse = await fetch(
+                    `http://localhost:${process.env.PORT || 3001}/api/ai-generate/radio-script`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            hostName: segment.hostName,
+                            hostPersonality: hostPersonality || segment.hostPersonality,
+                            nextSongTitle: segment.nextTrack?.title,
+                            nextSongArtist: segment.nextTrack?.artist,
+                            previousSongTitle: segment.previousTrack?.title,
+                            previousSongArtist: segment.previousTrack?.artist,
+                            targetDuration,
+                            stationName,
+                        }),
+                    }
+                );
+
+                const scriptData = await scriptResponse.json();
+                results.push({
+                    index: i,
+                    segmentId: segment._id,
+                    script: scriptData.script,
+                    source: scriptData.source,
+                    wordCount: scriptData.wordCount,
+                    estimatedDuration: scriptData.estimatedDuration,
+                });
+
+                console.log(`📻 Generated script ${i + 1}/${segments.length}`);
+            } catch (err) {
+                console.error(`Error generating script for segment ${i}:`, err);
+                results.push({
+                    index: i,
+                    segmentId: segment._id,
+                    script: getFallbackRadioScript(segment.hostName, segment.nextTrack?.title, segment.nextTrack?.artist),
+                    source: 'fallback',
+                    error: err.message,
+                });
+            }
+        }
+
+        res.json({
+            results,
+            total: segments.length,
+            generated: results.filter(r => !r.skipped && !r.error).length,
+            fallbacks: results.filter(r => r.source === 'fallback').length,
+        });
+
+    } catch (error) {
+        console.error('Batch radio script generation error:', error);
+        res.status(500).json({ message: 'Failed to generate scripts', error: error.message });
+    }
+});
+
+// Fallback radio script when AI generation fails
+function getFallbackRadioScript(hostName, songTitle, songArtist) {
+    const greetings = [
+        "Welcome back to Praise Station Radio!",
+        "You're listening to Praise Station Radio!",
+        "Thanks for tuning in to Praise Station Radio!",
+        "God bless you for joining us today!",
+    ];
+
+    const messages = [
+        "Remember, God's love is with you always.",
+        "Let this music lift your spirit today!",
+        "May your day be filled with His blessings.",
+        "Let's praise the Lord together!",
+        "God has great plans for you!",
+    ];
+
+    const intros = [
+        `Here's "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}.`,
+        `Coming up next, "${songTitle}"${songArtist ? ` from ${songArtist}` : ''}.`,
+        `Let's listen to "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}.`,
+        `Up next is "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}. Enjoy!`,
+    ];
+
+    const greeting = greetings[Math.floor(Math.random() * greetings.length)];
+    const message = messages[Math.floor(Math.random() * messages.length)];
+    const intro = intros[Math.floor(Math.random() * intros.length)];
+
+    return `${greeting} ${message} ${intro}`;
+}
+
 module.exports = router;
 
