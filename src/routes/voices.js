@@ -23,12 +23,12 @@ router.get('/', async (req, res) => {
 // Default voices to return if database is empty and ElevenLabs fails
 // These are standard ElevenLabs voices that should always work
 const DEFAULT_VOICES = [
-    { voiceId: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', category: 'premade', enabled: true },
-    { voiceId: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', category: 'premade', enabled: true },
-    { voiceId: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', category: 'premade', enabled: true },
-    { voiceId: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', category: 'premade', enabled: true },
-    { voiceId: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', category: 'premade', enabled: true },
-    { voiceId: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', category: 'premade', enabled: true },
+    { voiceId: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', category: 'premade', enabled: true, showInApp: true },
+    { voiceId: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', category: 'premade', enabled: true, showInApp: true },
+    { voiceId: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', category: 'premade', enabled: true, showInApp: true },
+    { voiceId: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', category: 'premade', enabled: true, showInApp: true },
+    { voiceId: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', category: 'premade', enabled: true, showInApp: true },
+    { voiceId: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', category: 'premade', enabled: true, showInApp: true },
 ];
 
 // GET /enabled - Get only enabled voices (for app use)
@@ -112,13 +112,14 @@ router.get('/sync', async (req, res) => {
                 await existing.save();
                 updated++;
             } else {
-                // Create new voice (default to enabled)
+                // Create new voice (default to enabled but NOT shown in app - admin must enable)
                 await Voice.create({
                     voiceId: voice.voice_id,
                     name: voice.name,
                     category: voice.category || 'premade',
                     previewUrl: voice.preview_url,
                     enabled: true,
+                    showInApp: false, // Must be manually enabled to show in shop
                     displayOrder: synced // Default order based on sync order
                 });
                 created++;
@@ -202,6 +203,7 @@ router.put('/:voiceId', async (req, res) => {
 
         // Update allowed fields
         if (req.body.enabled !== undefined) voice.enabled = req.body.enabled;
+        if (req.body.showInApp !== undefined) voice.showInApp = req.body.showInApp;
         if (req.body.customName !== undefined) voice.customName = req.body.customName;
         if (req.body.characterImage !== undefined) voice.characterImage = req.body.characterImage;
         if (req.body.description !== undefined) voice.description = req.body.description;

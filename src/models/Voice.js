@@ -28,6 +28,10 @@ const voiceSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    showInApp: {
+        type: Boolean,
+        default: true // Whether this voice appears in the app shop for users
+    },
     // Additional metadata
     description: {
         type: String
