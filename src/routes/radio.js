@@ -198,13 +198,16 @@ const getVertexAccessToken = async () => {
 const generateTTSAudio = async (text, voiceConfig) => {
     const credentialsJson = process.env.GCS_CREDENTIALS_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
     
-    // Try Vertex AI Gemini TTS first (supports emotional cues)
+    // Try Vertex AI Gemini 2.5 Flash TTS first (supports emotional cues)
     if (credentialsJson) {
         try {
             console.log('🎙️ Trying Vertex AI Gemini 2.5 Flash TTS...');
             
             const credentials = JSON.parse(credentialsJson);
             const projectId = credentials.project_id;
+            const clientEmail = credentials.client_email;
+            console.log(`📍 Using project: ${projectId}, service account: ${clientEmail}`);
+            
             const accessToken = await getVertexAccessToken();
             
             if (!accessToken) {

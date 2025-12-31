@@ -31,7 +31,7 @@ const radioStationSchema = new mongoose.Schema({
     // How often host breaks occur (every N songs)
     hostBreakFrequency: {
         type: Number,
-        default: 1, // After every song
+        default: 3, // After every 3 songs
         min: 1,
         max: 10,
     },
