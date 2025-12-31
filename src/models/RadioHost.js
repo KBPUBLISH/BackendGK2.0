@@ -65,9 +65,8 @@ const radioHostSchema = new mongoose.Schema({
 });
 
 // Update timestamp on save
-radioHostSchema.pre('save', function(next) {
+radioHostSchema.pre('save', function() {
     this.updatedAt = Date.now();
-    next();
 });
 
 module.exports = mongoose.model('RadioHost', radioHostSchema);

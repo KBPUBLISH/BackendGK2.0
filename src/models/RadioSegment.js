@@ -83,9 +83,8 @@ const radioSegmentSchema = new mongoose.Schema({
 });
 
 // Update timestamp on save
-radioSegmentSchema.pre('save', function(next) {
+radioSegmentSchema.pre('save', function() {
     this.updatedAt = Date.now();
-    next();
 });
 
 // Index for efficient querying by station and order
