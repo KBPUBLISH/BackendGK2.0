@@ -53,10 +53,11 @@ const generateRadioScript = async (options) => {
     if (contentType === 'station_intro') {
         taskDescription = `YOUR TASK: Write an enthusiastic WELCOME introduction. This plays when a listener first tunes in.
 1. Welcome listeners warmly to "${stationName}"!
-2. Express excitement about the music ahead
-3. Mention what makes this station special (uplifting Christian music for families)
-4. Share a quick blessing
-5. Introduce the first song: "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}`;
+2. You may introduce yourself by name (e.g., "I'm ${hostName}")
+3. Express excitement about the music ahead
+4. Mention what makes this station special (uplifting Christian music for families)
+5. Share a quick blessing
+6. Introduce the first song: "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}`;
     } else if (contentType === 'story_intro') {
         taskDescription = `YOUR TASK: Write an exciting "story time" introduction.
 1. ${previousSongTitle ? `Briefly wrap up "${previousSongTitle}"` : 'Build excitement for story time'}
@@ -82,6 +83,8 @@ const generateRadioScript = async (options) => {
 2. Share a brief encouraging message
 3. Introduce "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}`;
     }
+    
+    // IMPORTANT: Host name is for AI context, NOT to be used addressing listeners
 
     const prompt = `You are ${hostName || 'a friendly radio host'} on "${stationName}", a Christian family radio station.
 
@@ -96,10 +99,18 @@ REQUIREMENTS:
 - Family-friendly
 - Warm and genuine
 - Reference God, faith, blessings naturally
-- NO stage directions or parentheticals
-- ONLY the spoken words
+- Address listeners as "friends", "everyone", or "you" - NEVER use your own name to address them
+- You may introduce yourself by name ONCE at the start if it's a station intro
 
-Respond with ONLY the script.`;
+EMOTIONAL CUES (use sparingly for expressiveness):
+- Add [excited] before enthusiastic parts
+- Add [warm] or [gentle] for tender moments
+- Add [joyful] for happy announcements
+- Add [reverent] for prayer or devotional moments
+- Add [upbeat] for energetic transitions
+Example: "[excited] Welcome to Praise Station Radio! [warm] We're so glad you're here with us today."
+
+Respond with ONLY the script (including emotional cues where appropriate).`;
 
     try {
         const response = await fetch(
@@ -126,11 +137,11 @@ Respond with ONLY the script.`;
             return getFallbackScript(hostName, nextSongTitle, nextSongArtist, contentType);
         }
 
-        // Clean up script
+        // Clean up script - keep [emotional cues] for Gemini TTS!
         return scriptText
-            .replace(/\*[^*]+\*/g, '')
-            .replace(/\([^)]+\)/g, '')
-            .replace(/\[[^\]]+\]/g, '')
+            .replace(/\*[^*]+\*/g, '')  // Remove *actions*
+            .replace(/\([^)]+\)/g, '')  // Remove (parentheticals)
+            // Keep [brackets] - Gemini TTS uses them for emotional cues!
             .replace(/\s+/g, ' ')
             .trim();
     } catch (err) {
@@ -140,33 +151,110 @@ Respond with ONLY the script.`;
 };
 
 // Fallback scripts when AI is unavailable
+// Note: hostName is the DJ's name, NOT used to address listeners
 const getFallbackScript = (hostName, songTitle, songArtist, contentType) => {
-    const name = hostName || 'friends';
     const title = songTitle || 'this next song';
     const artist = songArtist ? ` by ${songArtist}` : '';
 
     if (contentType === 'station_intro') {
-        return `Welcome to Praise Station Radio, ${name}! We're so glad you're here. Get ready for uplifting music and encouragement for your whole family. Coming up first, here's "${title}"${artist}. Enjoy!`;
+        return `Welcome to Praise Station Radio! I'm so glad you're here with us today. Get ready for uplifting music and encouragement for your whole family. Coming up first, here's "${title}"${artist}. Enjoy!`;
     } else if (contentType === 'story_intro') {
-        return `It's story time, ${name}! Get cozy and ready for a wonderful adventure. Coming up, we have "${title}"${artist}. Let's listen together!`;
+        return `It's story time, friends! Get cozy and ready for a wonderful adventure. Coming up, we have "${title}"${artist}. Let's listen together!`;
     } else if (contentType === 'story_outro') {
-        return `I hope you enjoyed that story, ${name}! "${title}" reminds us of God's amazing love. What a blessing! Let's continue with more great content.`;
+        return `I hope you enjoyed that story! "${title}" reminds us of God's amazing love. What a blessing! Let's continue with more great content.`;
     } else if (contentType === 'devotional') {
-        return `Let's take a moment to reflect and grow closer to God, ${name}. Up next is "${title}"${artist}. Open your heart and listen.`;
+        return `Let's take a moment to reflect and grow closer to God together. Up next is "${title}"${artist}. Open your heart and listen.`;
     }
-    return `What a blessing to be with you today, ${name}! Up next we have "${title}"${artist}. May it lift your spirit!`;
+    return `What a blessing to be with you today! Up next we have "${title}"${artist}. May it lift your spirit!`;
 };
 
-// Helper: Generate TTS audio
+// Gemini TTS speakers (from Google's documentation)
+const GEMINI_TTS_SPEAKERS = [
+    'Kore', 'Charon', 'Fenrir', 'Aoede', 'Puck', 'Leda', 'Orus', 'Zephyr'
+];
+
+// Helper: Generate TTS audio using Gemini 2.5 Flash TTS (supports emotional cues!)
 const generateTTSAudio = async (text, voiceConfig) => {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    
+    // Try Gemini TTS first (supports emotional cues)
+    if (geminiKey) {
+        try {
+            console.log('🎙️ Trying Gemini 2.5 Flash TTS...');
+            
+            // Map voice config to Gemini speaker or use default
+            const speaker = voiceConfig.geminiSpeaker || 'Kore';
+            
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiKey}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{ text: text }]
+                        }],
+                        generationConfig: {
+                            responseModalities: ['AUDIO'],
+                            speechConfig: {
+                                voiceConfig: {
+                                    prebuiltVoiceConfig: {
+                                        voiceName: speaker
+                                    }
+                                }
+                            }
+                        }
+                    })
+                }
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                
+                if (audioData) {
+                    // audioData is base64 encoded
+                    const audioBuffer = Buffer.from(audioData, 'base64');
+                    
+                    // Save to GCS
+                    const hash = crypto.createHash('md5').update(text + Date.now()).digest('hex');
+                    const filename = `radio/tts/hostbreak_${hash}.mp3`;
+                    
+                    if (bucket) {
+                        const blob = bucket.file(filename);
+                        await new Promise((resolve, reject) => {
+                            const stream = blob.createWriteStream({ metadata: { contentType: 'audio/mpeg' } });
+                            stream.on('error', reject);
+                            stream.on('finish', resolve);
+                            stream.end(audioBuffer);
+                        });
+                        console.log('✅ Gemini TTS audio saved to GCS');
+                        return `https://storage.googleapis.com/${bucket.name}/${filename}`;
+                    }
+                }
+            } else {
+                const errorText = await response.text();
+                console.log('⚠️ Gemini TTS not available, falling back to Google Cloud TTS:', errorText);
+            }
+        } catch (err) {
+            console.log('⚠️ Gemini TTS error, falling back:', err.message);
+        }
+    }
+    
+    // Fallback to Google Cloud TTS
     if (!ttsClient) {
-        console.error('❌ TTS client not initialized');
+        console.error('❌ No TTS client available');
         return null;
     }
 
     try {
+        console.log('🎙️ Using Google Cloud TTS fallback...');
+        
+        // Strip emotional cues for Google Cloud TTS (it doesn't support them)
+        const cleanText = text.replace(/\[[^\]]+\]/g, '').replace(/\s+/g, ' ').trim();
+        
         const request = {
-            input: { text },
+            input: { text: cleanText },
             voice: {
                 languageCode: voiceConfig.languageCode || 'en-US',
                 name: voiceConfig.name || 'en-US-Chirp3-HD-Enceladus',
