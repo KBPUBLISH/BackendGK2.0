@@ -201,7 +201,7 @@ const generateTTSAudio = async (text, voiceConfig) => {
     // Try Vertex AI Gemini TTS first (supports emotional cues)
     if (credentialsJson) {
         try {
-            console.log('🎙️ Trying Vertex AI Gemini TTS...');
+            console.log('🎙️ Trying Vertex AI Gemini 2.5 Flash TTS...');
             
             const credentials = JSON.parse(credentialsJson);
             const projectId = credentials.project_id;
@@ -214,9 +214,9 @@ const generateTTSAudio = async (text, voiceConfig) => {
             // Map voice config to Gemini speaker or use default
             const speaker = voiceConfig.geminiSpeaker || 'Kore';
             
-            // Use Vertex AI endpoint
+            // Use Vertex AI endpoint with Gemini 2.5 Flash TTS
             const response = await fetch(
-                `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent`,
+                `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.5-flash-preview-tts:generateContent`,
                 {
                     method: 'POST',
                     headers: { 
