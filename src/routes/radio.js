@@ -522,7 +522,7 @@ router.get('/library', async (req, res) => {
 // POST /api/radio/library - Add a track to the library
 router.post('/library', async (req, res) => {
     try {
-        const { title, artist, audioUrl, coverImage, duration, category, rotation, sourcePlaylistId, sourceItemIndex, notes } = req.body;
+        const { title, artist, audioUrl, coverImage, duration, category, rotation, sourcePlaylistId, sourceItemIndex, notes, description, enabled } = req.body;
         
         if (!title || !audioUrl) {
             return res.status(400).json({ message: 'Title and audioUrl are required' });
@@ -540,8 +540,10 @@ router.post('/library', async (req, res) => {
             audioUrl,
             coverImage,
             duration,
+            description, // For context-aware radio hosting
             category: category || 'general',
             rotation: rotation || 'medium',
+            enabled: enabled !== undefined ? enabled : true,
             sourcePlaylistId,
             sourceItemIndex,
             notes
