@@ -44,6 +44,12 @@ const radioHostSchema = new mongoose.Schema({
     avatarUrl: {
         type: String,
     },
+    // Host gender for Gemini TTS voice selection
+    gender: {
+        type: String,
+        enum: ['male', 'female'],
+        default: 'male',
+    },
     // Whether this host is active
     enabled: {
         type: Boolean,

@@ -218,22 +218,8 @@ const generateTTSAudio = async (text, voiceConfig) => {
             // Gemini TTS voices: Kore (F), Charon (M), Fenrir (M), Aoede (F), Puck (M), Leda (F), Orus (M), Zephyr (M)
             let speaker = voiceConfig.geminiSpeaker;
             if (!speaker) {
-                // Try to determine gender from Google TTS voice name
-                const voiceName = voiceConfig.name || '';
-                const isMale = voiceName.includes('Male') || 
-                               voiceName.includes('-M-') || 
-                               voiceName.includes('Standard-B') || 
-                               voiceName.includes('Standard-D') ||
-                               voiceName.includes('Wavenet-B') ||
-                               voiceName.includes('Wavenet-D') ||
-                               voiceName.includes('Neural2-D') ||
-                               voiceName.includes('Neural2-J') ||
-                               voiceName.includes('Polyglot-1') ||
-                               voiceName.includes('Chirp3-HD-Charon') ||
-                               voiceName.includes('Chirp3-HD-Fenrir') ||
-                               voiceName.includes('Chirp3-HD-Orus') ||
-                               voiceName.includes('Chirp3-HD-Puck') ||
-                               voiceName.includes('Chirp3-HD-Zephyr');
+                // Use gender from host config (passed via voiceConfig.gender)
+                const isMale = voiceConfig.gender === 'male';
                 
                 // Pick a Gemini voice based on gender
                 const maleVoices = ['Charon', 'Fenrir', 'Orus', 'Puck', 'Zephyr'];
@@ -244,7 +230,7 @@ const generateTTSAudio = async (text, voiceConfig) => {
                 } else {
                     speaker = femaleVoices[Math.floor(Math.random() * femaleVoices.length)];
                 }
-                console.log(`🎭 Auto-selected Gemini voice: ${speaker} (detected ${isMale ? 'male' : 'female'} from ${voiceName})`);
+                console.log(`🎭 Selected Gemini voice: ${speaker} (${isMale ? 'male' : 'female'} host)`);
             }
             
             // Use Vertex AI endpoint with Gemini 2.5 Flash TTS
@@ -1206,6 +1192,7 @@ router.post('/host-break/generate', async (req, res) => {
             languageCode: host.googleVoice?.languageCode || 'en-US',
             pitch: host.googleVoice?.pitch || 0,
             speakingRate: host.googleVoice?.speakingRate || 1.0,
+            gender: host.gender || 'male', // Pass host gender for Gemini voice selection
         });
 
         // Calculate estimated duration
