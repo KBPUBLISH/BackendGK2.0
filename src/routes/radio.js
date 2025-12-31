@@ -214,8 +214,38 @@ const generateTTSAudio = async (text, voiceConfig) => {
                 throw new Error('Could not get access token');
             }
             
-            // Map voice config to Gemini speaker or use default
-            const speaker = voiceConfig.geminiSpeaker || 'Kore';
+            // Map voice config to Gemini speaker based on gender
+            // Gemini TTS voices: Kore (F), Charon (M), Fenrir (M), Aoede (F), Puck (M), Leda (F), Orus (M), Zephyr (M)
+            let speaker = voiceConfig.geminiSpeaker;
+            if (!speaker) {
+                // Try to determine gender from Google TTS voice name
+                const voiceName = voiceConfig.name || '';
+                const isMale = voiceName.includes('Male') || 
+                               voiceName.includes('-M-') || 
+                               voiceName.includes('Standard-B') || 
+                               voiceName.includes('Standard-D') ||
+                               voiceName.includes('Wavenet-B') ||
+                               voiceName.includes('Wavenet-D') ||
+                               voiceName.includes('Neural2-D') ||
+                               voiceName.includes('Neural2-J') ||
+                               voiceName.includes('Polyglot-1') ||
+                               voiceName.includes('Chirp3-HD-Charon') ||
+                               voiceName.includes('Chirp3-HD-Fenrir') ||
+                               voiceName.includes('Chirp3-HD-Orus') ||
+                               voiceName.includes('Chirp3-HD-Puck') ||
+                               voiceName.includes('Chirp3-HD-Zephyr');
+                
+                // Pick a Gemini voice based on gender
+                const maleVoices = ['Charon', 'Fenrir', 'Orus', 'Puck', 'Zephyr'];
+                const femaleVoices = ['Kore', 'Aoede', 'Leda'];
+                
+                if (isMale) {
+                    speaker = maleVoices[Math.floor(Math.random() * maleVoices.length)];
+                } else {
+                    speaker = femaleVoices[Math.floor(Math.random() * femaleVoices.length)];
+                }
+                console.log(`🎭 Auto-selected Gemini voice: ${speaker} (detected ${isMale ? 'male' : 'female'} from ${voiceName})`);
+            }
             
             // Use Vertex AI endpoint with Gemini 2.5 Flash TTS
             const response = await fetch(
@@ -1108,10 +1138,30 @@ router.post('/host-break/generate', async (req, res) => {
             targetDuration = 20,
             contentType = 'song',
             contentDescription = '',
+            forceRegenerate = false,
         } = req.body;
 
         if (!nextSongTitle) {
             return res.status(400).json({ message: 'nextSongTitle is required' });
+        }
+
+        // Check for cached station intro
+        if (contentType === 'station_intro' && !forceRegenerate) {
+            const station = await RadioStation.findOne({});
+            if (station?.cachedIntro?.audioUrl) {
+                console.log(`📻 Using cached station intro`);
+                return res.json({
+                    success: true,
+                    cached: true,
+                    hostBreak: {
+                        hostId: station.cachedIntro.hostId,
+                        hostName: station.cachedIntro.hostName,
+                        script: station.cachedIntro.script,
+                        audioUrl: station.cachedIntro.audioUrl,
+                        duration: 25,
+                    }
+                });
+            }
         }
 
         // Get a random host if not specified
@@ -1165,6 +1215,24 @@ router.post('/host-break/generate', async (req, res) => {
         console.log(`✅ Host break generated: ${audioUrl ? 'with audio' : 'script only'}`);
         if (audioUrl) {
             console.log(`🔗 Audio URL: ${audioUrl}`);
+        }
+
+        // Cache station intro for future use
+        if (contentType === 'station_intro' && audioUrl) {
+            try {
+                await RadioStation.findOneAndUpdate({}, {
+                    cachedIntro: {
+                        audioUrl,
+                        script,
+                        hostId: host._id,
+                        hostName: host.name,
+                        generatedAt: new Date(),
+                    }
+                });
+                console.log(`💾 Cached station intro`);
+            } catch (cacheErr) {
+                console.error('Failed to cache intro:', cacheErr.message);
+            }
         }
 
         res.json({

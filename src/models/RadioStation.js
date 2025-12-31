@@ -67,6 +67,14 @@ const radioStationSchema = new mongoose.Schema({
     coverImageUrl: {
         type: String,
     },
+    // Cached station intro (so it doesn't regenerate every time)
+    cachedIntro: {
+        audioUrl: String,
+        script: String,
+        hostId: mongoose.Schema.Types.ObjectId,
+        hostName: String,
+        generatedAt: Date,
+    },
     // Whether the station is live/active
     isLive: {
         type: Boolean,
