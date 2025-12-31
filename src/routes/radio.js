@@ -1,11 +1,210 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const fetch = require('node-fetch');
+const crypto = require('crypto');
 const RadioHost = require('../models/RadioHost');
 const RadioStation = require('../models/RadioStation');
 const RadioSegment = require('../models/RadioSegment');
 const RadioLibrary = require('../models/RadioLibrary');
 const Playlist = require('../models/Playlist');
+const { bucket } = require('../config/storage');
+const textToSpeech = require('@google-cloud/text-to-speech');
+
+// Initialize TTS client (same pattern as googleTts.js)
+let ttsClient = null;
+const credentialsJson = process.env.GCS_CREDENTIALS_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+if (credentialsJson) {
+    try {
+        const credentials = JSON.parse(credentialsJson);
+        ttsClient = new textToSpeech.TextToSpeechClient({ credentials });
+        console.log('📻 Radio: TTS client initialized');
+    } catch (e) {
+        console.error('📻 Radio: Failed to init TTS:', e.message);
+    }
+}
+
+// Helper: Generate radio script using Gemini AI
+const generateRadioScript = async (options) => {
+    const {
+        hostName,
+        hostPersonality,
+        nextSongTitle,
+        nextSongArtist,
+        previousSongTitle,
+        previousSongArtist,
+        targetDuration = 20,
+        stationName = 'Praise Station Radio',
+        contentType = 'song',
+        contentDescription = '',
+    } = options;
+
+    const geminiKey = process.env.GEMINI_API_KEY;
+    
+    // Fallback script if no API key
+    if (!geminiKey) {
+        return getFallbackScript(hostName, nextSongTitle, nextSongArtist, contentType);
+    }
+
+    const targetWordCount = Math.round(targetDuration * 2.5);
+    let taskDescription = '';
+    let contextInfo = contentDescription ? `\nCONTENT DESCRIPTION: ${contentDescription}` : '';
+
+    if (contentType === 'station_intro') {
+        taskDescription = `YOUR TASK: Write an enthusiastic WELCOME introduction. This plays when a listener first tunes in.
+1. Welcome listeners warmly to "${stationName}"!
+2. Express excitement about the music ahead
+3. Mention what makes this station special (uplifting Christian music for families)
+4. Share a quick blessing
+5. Introduce the first song: "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}`;
+    } else if (contentType === 'story_intro') {
+        taskDescription = `YOUR TASK: Write an exciting "story time" introduction.
+1. ${previousSongTitle ? `Briefly wrap up "${previousSongTitle}"` : 'Build excitement for story time'}
+2. Announce it's STORY TIME with enthusiasm!
+3. Introduce the story "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
+4. ${contentDescription ? 'Tease what the story is about' : 'Build anticipation'}
+5. Invite listeners to get cozy`;
+    } else if (contentType === 'story_outro') {
+        taskDescription = `YOUR TASK: Write a warm reflection after the story ended.
+1. Say "I hope you enjoyed that story!"
+2. Reference "${nextSongTitle}"
+3. Share a brief reflection on the story's message
+4. Relate to faith or daily life
+5. Transition to what's next`;
+    } else if (contentType === 'devotional') {
+        taskDescription = `YOUR TASK: Write a reverent devotional introduction.
+1. Create a peaceful atmosphere
+2. Introduce the devotional "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
+3. Encourage listeners to open their hearts`;
+    } else {
+        taskDescription = `YOUR TASK: Write a short radio host segment.
+1. ${previousSongTitle ? `Briefly reflect on "${previousSongTitle}"` : 'Start with a warm greeting'}
+2. Share a brief encouraging message
+3. Introduce "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}`;
+    }
+
+    const prompt = `You are ${hostName || 'a friendly radio host'} on "${stationName}", a Christian family radio station.
+
+PERSONALITY: ${hostPersonality || 'Warm, encouraging, and uplifting.'}
+${contextInfo}
+
+${taskDescription}
+
+REQUIREMENTS:
+- Target: ~${targetWordCount} words (${targetDuration} seconds)
+- Natural, conversational language
+- Family-friendly
+- Warm and genuine
+- Reference God, faith, blessings naturally
+- NO stage directions or parentheticals
+- ONLY the spoken words
+
+Respond with ONLY the script.`;
+
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.8, maxOutputTokens: 300 },
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            console.error('❌ Gemini error:', await response.text());
+            return getFallbackScript(hostName, nextSongTitle, nextSongArtist, contentType);
+        }
+
+        const data = await response.json();
+        const scriptText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+        if (!scriptText) {
+            return getFallbackScript(hostName, nextSongTitle, nextSongArtist, contentType);
+        }
+
+        // Clean up script
+        return scriptText
+            .replace(/\*[^*]+\*/g, '')
+            .replace(/\([^)]+\)/g, '')
+            .replace(/\[[^\]]+\]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    } catch (err) {
+        console.error('❌ Script generation error:', err.message);
+        return getFallbackScript(hostName, nextSongTitle, nextSongArtist, contentType);
+    }
+};
+
+// Fallback scripts when AI is unavailable
+const getFallbackScript = (hostName, songTitle, songArtist, contentType) => {
+    const name = hostName || 'friends';
+    const title = songTitle || 'this next song';
+    const artist = songArtist ? ` by ${songArtist}` : '';
+
+    if (contentType === 'station_intro') {
+        return `Welcome to Praise Station Radio, ${name}! We're so glad you're here. Get ready for uplifting music and encouragement for your whole family. Coming up first, here's "${title}"${artist}. Enjoy!`;
+    } else if (contentType === 'story_intro') {
+        return `It's story time, ${name}! Get cozy and ready for a wonderful adventure. Coming up, we have "${title}"${artist}. Let's listen together!`;
+    } else if (contentType === 'story_outro') {
+        return `I hope you enjoyed that story, ${name}! "${title}" reminds us of God's amazing love. What a blessing! Let's continue with more great content.`;
+    } else if (contentType === 'devotional') {
+        return `Let's take a moment to reflect and grow closer to God, ${name}. Up next is "${title}"${artist}. Open your heart and listen.`;
+    }
+    return `What a blessing to be with you today, ${name}! Up next we have "${title}"${artist}. May it lift your spirit!`;
+};
+
+// Helper: Generate TTS audio
+const generateTTSAudio = async (text, voiceConfig) => {
+    if (!ttsClient) {
+        console.error('❌ TTS client not initialized');
+        return null;
+    }
+
+    try {
+        const request = {
+            input: { text },
+            voice: {
+                languageCode: voiceConfig.languageCode || 'en-US',
+                name: voiceConfig.name || 'en-US-Chirp3-HD-Enceladus',
+            },
+            audioConfig: {
+                audioEncoding: 'MP3',
+                pitch: voiceConfig.pitch || 0,
+                speakingRate: voiceConfig.speakingRate || 1.0,
+            },
+        };
+
+        const [response] = await ttsClient.synthesizeSpeech(request);
+        
+        if (!response.audioContent) {
+            throw new Error('No audio content');
+        }
+
+        // Save to GCS
+        const hash = crypto.createHash('md5').update(text + Date.now()).digest('hex');
+        const filename = `radio/tts/hostbreak_${hash}.mp3`;
+        
+        if (bucket) {
+            const blob = bucket.file(filename);
+            await new Promise((resolve, reject) => {
+                const stream = blob.createWriteStream({ metadata: { contentType: 'audio/mpeg' } });
+                stream.on('error', reject);
+                stream.on('finish', resolve);
+                stream.end(response.audioContent);
+            });
+            return `https://storage.googleapis.com/${bucket.name}/${filename}`;
+        }
+        
+        return null;
+    } catch (err) {
+        console.error('❌ TTS error:', err.message);
+        return null;
+    }
+};
 
 // ===========================
 // STATION ROUTES
@@ -733,11 +932,9 @@ router.post('/host-break/generate', async (req, res) => {
             nextSongArtist,
             previousSongTitle,
             previousSongArtist,
-            targetDuration = 20, // Shorter default for on-demand
-            // New: content-aware hosting
-            contentType = 'song', // 'song', 'story_intro', 'story_outro', 'devotional'
-            contentDescription = '', // Description for context
-            contentCategory = 'general' // 'worship', 'story', 'devotional', 'kids', 'general'
+            targetDuration = 20,
+            contentType = 'song',
+            contentDescription = '',
         } = req.body;
 
         if (!nextSongTitle) {
@@ -759,56 +956,40 @@ router.post('/host-break/generate', async (req, res) => {
             return res.status(400).json({ message: 'No hosts available' });
         }
 
-        // Step 1: Generate script using AI
-        const scriptResponse = await fetch(
-            `${process.env.BACKEND_URL || 'http://localhost:' + (process.env.PORT || 3001)}/api/ai-generate/radio-script`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    hostName: host.name,
-                    hostPersonality: host.personality,
-                    nextSongTitle,
-                    nextSongArtist,
-                    previousSongTitle,
-                    previousSongArtist,
-                    targetDuration,
-                    contentType,
-                    contentDescription,
-                    contentCategory
-                })
-            }
-        );
+        console.log(`📻 Generating host break for "${nextSongTitle}" with ${host.name}`);
 
-        if (!scriptResponse.ok) {
+        // Step 1: Generate script using direct function call (no HTTP)
+        const script = await generateRadioScript({
+            hostName: host.name,
+            hostPersonality: host.personality,
+            nextSongTitle,
+            nextSongArtist,
+            previousSongTitle,
+            previousSongArtist,
+            targetDuration,
+            contentType,
+            contentDescription,
+        });
+        
+        if (!script) {
             throw new Error('Failed to generate script');
         }
+        
+        console.log(`📝 Script: "${script.substring(0, 60)}..."`);
 
-        const scriptData = await scriptResponse.json();
-        const script = scriptData.script;
+        // Step 2: Generate TTS audio using direct function call (no HTTP)
+        const audioUrl = await generateTTSAudio(script, {
+            name: host.googleVoice?.name || 'en-US-Chirp3-HD-Enceladus',
+            languageCode: host.googleVoice?.languageCode || 'en-US',
+            pitch: host.googleVoice?.pitch || 0,
+            speakingRate: host.googleVoice?.speakingRate || 1.0,
+        });
 
-        // Step 2: Generate TTS audio
-        const ttsResponse = await fetch(
-            `${process.env.BACKEND_URL || 'http://localhost:' + (process.env.PORT || 3001)}/api/google-tts/generate`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: script,
-                    voiceName: host.googleVoice?.name || 'en-US-Chirp3-HD-Algieba',
-                    languageCode: host.googleVoice?.languageCode || 'en-US',
-                    pitch: host.googleVoice?.pitch || 0,
-                    speakingRate: host.googleVoice?.speakingRate || 1.0
-                })
-            }
-        );
+        // Calculate estimated duration
+        const wordCount = script.split(/\s+/).length;
+        const estimatedDuration = Math.ceil((wordCount / 2.5));
 
-        if (!ttsResponse.ok) {
-            const errorData = await ttsResponse.json();
-            throw new Error(errorData.message || 'Failed to generate TTS audio');
-        }
-
-        const ttsData = await ttsResponse.json();
+        console.log(`✅ Host break generated: ${audioUrl ? 'with audio' : 'script only'}`);
 
         res.json({
             success: true,
@@ -817,16 +998,17 @@ router.post('/host-break/generate', async (req, res) => {
                 hostName: host.name,
                 hostAvatar: host.avatarUrl,
                 script,
-                audioUrl: ttsData.audioUrl,
-                duration: ttsData.duration || targetDuration
+                audioUrl,
+                duration: estimatedDuration,
             }
         });
 
     } catch (error) {
-        console.error('Error generating host break:', error);
+        console.error('❌ Error generating host break:', error.message);
         res.status(500).json({ message: 'Failed to generate host break', error: error.message });
     }
 });
+
 
 module.exports = router;
 
