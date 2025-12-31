@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const RadioHost = require('../models/RadioHost');
 const RadioStation = require('../models/RadioStation');
 const RadioSegment = require('../models/RadioSegment');
+const RadioLibrary = require('../models/RadioLibrary');
 const Playlist = require('../models/Playlist');
 
 // ===========================
@@ -465,6 +466,233 @@ router.get('/stats', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching stats:', error);
+        res.status(500).json({ message: 'Failed to fetch stats', error: error.message });
+    }
+});
+
+// ===========================
+// RADIO LIBRARY ROUTES
+// ===========================
+
+// GET /api/radio/library - Get all tracks in the radio library
+router.get('/library', async (req, res) => {
+    try {
+        const { category, rotation, enabled } = req.query;
+        const filter = {};
+        
+        if (category) filter.category = category;
+        if (rotation) filter.rotation = rotation;
+        if (enabled !== undefined) filter.enabled = enabled === 'true';
+        
+        const tracks = await RadioLibrary.find(filter)
+            .sort({ createdAt: -1 });
+        
+        res.json({
+            tracks,
+            total: tracks.length,
+            enabledCount: tracks.filter(t => t.enabled).length
+        });
+    } catch (error) {
+        console.error('Error fetching radio library:', error);
+        res.status(500).json({ message: 'Failed to fetch library', error: error.message });
+    }
+});
+
+// POST /api/radio/library - Add a track to the library
+router.post('/library', async (req, res) => {
+    try {
+        const { title, artist, audioUrl, coverImage, duration, category, rotation, sourcePlaylistId, sourceItemIndex, notes } = req.body;
+        
+        if (!title || !audioUrl) {
+            return res.status(400).json({ message: 'Title and audioUrl are required' });
+        }
+        
+        // Check for duplicate (same audio URL)
+        const existing = await RadioLibrary.findOne({ audioUrl });
+        if (existing) {
+            return res.status(400).json({ message: 'This track is already in the library' });
+        }
+        
+        const track = new RadioLibrary({
+            title,
+            artist,
+            audioUrl,
+            coverImage,
+            duration,
+            category: category || 'general',
+            rotation: rotation || 'medium',
+            sourcePlaylistId,
+            sourceItemIndex,
+            notes
+        });
+        
+        await track.save();
+        console.log(`📻 Added to radio library: ${title}`);
+        
+        res.status(201).json(track);
+    } catch (error) {
+        console.error('Error adding to library:', error);
+        res.status(500).json({ message: 'Failed to add track', error: error.message });
+    }
+});
+
+// POST /api/radio/library/bulk - Add multiple tracks from a playlist
+router.post('/library/bulk', async (req, res) => {
+    try {
+        const { playlistId, category, rotation } = req.body;
+        
+        if (!playlistId) {
+            return res.status(400).json({ message: 'playlistId is required' });
+        }
+        
+        const playlist = await Playlist.findById(playlistId);
+        if (!playlist) {
+            return res.status(404).json({ message: 'Playlist not found' });
+        }
+        
+        if (!playlist.items || playlist.items.length === 0) {
+            return res.status(400).json({ message: 'Playlist has no items' });
+        }
+        
+        let added = 0;
+        let skipped = 0;
+        
+        for (let i = 0; i < playlist.items.length; i++) {
+            const item = playlist.items[i];
+            if (!item.audioUrl) continue;
+            
+            // Check for duplicate
+            const existing = await RadioLibrary.findOne({ audioUrl: item.audioUrl });
+            if (existing) {
+                skipped++;
+                continue;
+            }
+            
+            const track = new RadioLibrary({
+                title: item.title,
+                artist: item.author || playlist.author || 'Unknown Artist',
+                audioUrl: item.audioUrl,
+                coverImage: item.coverImage || playlist.coverImage,
+                duration: item.duration,
+                category: category || 'general',
+                rotation: rotation || 'medium',
+                sourcePlaylistId: playlist._id,
+                sourceItemIndex: i
+            });
+            
+            await track.save();
+            added++;
+        }
+        
+        console.log(`📻 Bulk added to radio library: ${added} tracks from "${playlist.title}"`);
+        
+        res.json({
+            message: `Added ${added} tracks, skipped ${skipped} duplicates`,
+            added,
+            skipped
+        });
+    } catch (error) {
+        console.error('Error bulk adding to library:', error);
+        res.status(500).json({ message: 'Failed to add tracks', error: error.message });
+    }
+});
+
+// PUT /api/radio/library/:id - Update a track
+router.put('/library/:id', async (req, res) => {
+    try {
+        const track = await RadioLibrary.findById(req.params.id);
+        if (!track) {
+            return res.status(404).json({ message: 'Track not found' });
+        }
+        
+        const { title, artist, category, rotation, enabled, notes } = req.body;
+        
+        if (title !== undefined) track.title = title;
+        if (artist !== undefined) track.artist = artist;
+        if (category !== undefined) track.category = category;
+        if (rotation !== undefined) track.rotation = rotation;
+        if (enabled !== undefined) track.enabled = enabled;
+        if (notes !== undefined) track.notes = notes;
+        
+        await track.save();
+        
+        res.json(track);
+    } catch (error) {
+        console.error('Error updating track:', error);
+        res.status(500).json({ message: 'Failed to update track', error: error.message });
+    }
+});
+
+// DELETE /api/radio/library/:id - Remove a track from library
+router.delete('/library/:id', async (req, res) => {
+    try {
+        const track = await RadioLibrary.findByIdAndDelete(req.params.id);
+        if (!track) {
+            return res.status(404).json({ message: 'Track not found' });
+        }
+        
+        console.log(`📻 Removed from radio library: ${track.title}`);
+        
+        res.json({ message: 'Track removed', track });
+    } catch (error) {
+        console.error('Error removing track:', error);
+        res.status(500).json({ message: 'Failed to remove track', error: error.message });
+    }
+});
+
+// POST /api/radio/library/:id/toggle - Toggle track enabled/disabled
+router.post('/library/:id/toggle', async (req, res) => {
+    try {
+        const track = await RadioLibrary.findById(req.params.id);
+        if (!track) {
+            return res.status(404).json({ message: 'Track not found' });
+        }
+        
+        track.enabled = !track.enabled;
+        await track.save();
+        
+        res.json(track);
+    } catch (error) {
+        console.error('Error toggling track:', error);
+        res.status(500).json({ message: 'Failed to toggle track', error: error.message });
+    }
+});
+
+// GET /api/radio/library/stats - Get library statistics
+router.get('/library/stats', async (req, res) => {
+    try {
+        const totalTracks = await RadioLibrary.countDocuments();
+        const enabledTracks = await RadioLibrary.countDocuments({ enabled: true });
+        
+        // Count by category
+        const byCategory = await RadioLibrary.aggregate([
+            { $group: { _id: '$category', count: { $sum: 1 } } }
+        ]);
+        
+        // Count by rotation
+        const byRotation = await RadioLibrary.aggregate([
+            { $group: { _id: '$rotation', count: { $sum: 1 } } }
+        ]);
+        
+        // Calculate total duration
+        const durationResult = await RadioLibrary.aggregate([
+            { $match: { enabled: true } },
+            { $group: { _id: null, totalDuration: { $sum: '$duration' } } }
+        ]);
+        
+        const totalDuration = durationResult[0]?.totalDuration || 0;
+        
+        res.json({
+            totalTracks,
+            enabledTracks,
+            disabledTracks: totalTracks - enabledTracks,
+            byCategory: Object.fromEntries(byCategory.map(c => [c._id, c.count])),
+            byRotation: Object.fromEntries(byRotation.map(r => [r._id, r.count])),
+            totalDurationSeconds: totalDuration,
+            totalDurationFormatted: `${Math.floor(totalDuration / 3600)}h ${Math.floor((totalDuration % 3600) / 60)}m`
+        });
+    } catch (error) {
+        console.error('Error fetching library stats:', error);
         res.status(500).json({ message: 'Failed to fetch stats', error: error.message });
     }
 });
