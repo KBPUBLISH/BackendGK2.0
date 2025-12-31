@@ -280,13 +280,34 @@ router.post('/segments/generate', async (req, res) => {
         
         // Get hosts to use
         const hostIdsToUse = hostIds || station.hosts.map(h => h._id.toString());
-        const hosts = await RadioHost.find({ 
+        
+        // First try to get enabled hosts
+        let hosts = await RadioHost.find({ 
             _id: { $in: hostIdsToUse }, 
             enabled: true 
         }).sort({ order: 1 });
         
+        // If no enabled hosts, try all hosts (maybe they're all disabled)
         if (hosts.length === 0) {
-            return res.status(400).json({ message: 'No active hosts available' });
+            hosts = await RadioHost.find({ 
+                _id: { $in: hostIdsToUse }
+            }).sort({ order: 1 });
+            
+            // Enable them automatically
+            if (hosts.length > 0) {
+                console.log('⚠️ No enabled hosts, enabling all hosts automatically');
+                await RadioHost.updateMany(
+                    { _id: { $in: hostIdsToUse } },
+                    { $set: { enabled: true } }
+                );
+            }
+        }
+        
+        if (hosts.length === 0) {
+            return res.status(400).json({ 
+                message: 'No hosts available. Please create at least one radio host first.',
+                hint: 'Go to Radio > Hosts to create a host'
+            });
         }
         
         // Clear existing segments if requested
