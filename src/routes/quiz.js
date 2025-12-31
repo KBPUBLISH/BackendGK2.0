@@ -659,7 +659,7 @@ router.post('/:bookId/submit', async (req, res) => {
         const coinsEarned = correctCount * 10;
 
         // Record the attempt
-        const attemptNumber = quiz.addAttempt(userId, correctCount, coinsEarned);
+        const newAttemptNumber = quiz.addAttempt(userId, correctCount, coinsEarned);
         await quiz.save();
 
         console.log(`📊 Quiz submitted (age ${userAge}): ${correctCount}/6 correct, ${coinsEarned} coins earned`);
@@ -668,8 +668,8 @@ router.post('/:bookId/submit', async (req, res) => {
             score: correctCount,
             totalQuestions: 6,
             coinsEarned,
-            attemptNumber,
-            attemptsRemaining: 2 - attemptNumber,
+            attemptNumber: newAttemptNumber,
+            attemptsRemaining: 2 - newAttemptNumber,
             results
         });
 
