@@ -718,5 +718,106 @@ router.get('/library/stats', async (req, res) => {
     }
 });
 
+// ===========================
+// HOST BREAK GENERATION (On-Demand)
+// ===========================
+
+// POST /api/radio/host-break/generate - Generate a host break with script + TTS audio
+router.post('/host-break/generate', async (req, res) => {
+    try {
+        const { 
+            hostId,
+            nextSongTitle, 
+            nextSongArtist,
+            previousSongTitle,
+            previousSongArtist,
+            targetDuration = 20 // Shorter default for on-demand
+        } = req.body;
+
+        if (!nextSongTitle) {
+            return res.status(400).json({ message: 'nextSongTitle is required' });
+        }
+
+        // Get a random host if not specified
+        let host;
+        if (hostId) {
+            host = await RadioHost.findById(hostId);
+        } else {
+            const hosts = await RadioHost.find({ enabled: true });
+            if (hosts.length > 0) {
+                host = hosts[Math.floor(Math.random() * hosts.length)];
+            }
+        }
+
+        if (!host) {
+            return res.status(400).json({ message: 'No hosts available' });
+        }
+
+        // Step 1: Generate script using AI
+        const scriptResponse = await fetch(
+            `${process.env.BACKEND_URL || 'http://localhost:' + (process.env.PORT || 3001)}/api/ai-generate/radio-script`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    hostName: host.name,
+                    hostPersonality: host.personality,
+                    nextSongTitle,
+                    nextSongArtist,
+                    previousSongTitle,
+                    previousSongArtist,
+                    targetDuration
+                })
+            }
+        );
+
+        if (!scriptResponse.ok) {
+            throw new Error('Failed to generate script');
+        }
+
+        const scriptData = await scriptResponse.json();
+        const script = scriptData.script;
+
+        // Step 2: Generate TTS audio
+        const ttsResponse = await fetch(
+            `${process.env.BACKEND_URL || 'http://localhost:' + (process.env.PORT || 3001)}/api/google-tts/generate`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: script,
+                    voiceName: host.googleVoice?.name || 'en-US-Chirp3-HD-Algieba',
+                    languageCode: host.googleVoice?.languageCode || 'en-US',
+                    pitch: host.googleVoice?.pitch || 0,
+                    speakingRate: host.googleVoice?.speakingRate || 1.0
+                })
+            }
+        );
+
+        if (!ttsResponse.ok) {
+            const errorData = await ttsResponse.json();
+            throw new Error(errorData.message || 'Failed to generate TTS audio');
+        }
+
+        const ttsData = await ttsResponse.json();
+
+        res.json({
+            success: true,
+            hostBreak: {
+                hostId: host._id,
+                hostName: host.name,
+                hostAvatar: host.avatarUrl,
+                script,
+                audioUrl: ttsData.audioUrl,
+                duration: ttsData.duration || targetDuration
+            }
+        });
+
+    } catch (error) {
+        console.error('Error generating host break:', error);
+        res.status(500).json({ message: 'Failed to generate host break', error: error.message });
+    }
+});
+
 module.exports = router;
 
