@@ -177,10 +177,18 @@ router.post('/preview', async (req, res) => {
         const previewText = text || 'Hello! Welcome to Praise Station Radio, where we lift up your spirit with uplifting music and encouraging words.';
 
         const apiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY;
+        
+        console.log('🎙️ TTS Preview request:', { 
+            voiceName, 
+            hasApiKey: !!apiKey,
+            textLength: previewText.length 
+        });
+        
         if (!apiKey) {
+            console.error('❌ GOOGLE_TTS_API_KEY not set in environment');
             return res.status(500).json({ 
                 message: 'Google TTS API key not configured',
-                hint: 'Set GOOGLE_TTS_API_KEY in your .env file'
+                hint: 'Set GOOGLE_TTS_API_KEY environment variable in Render'
             });
         }
 
@@ -190,7 +198,7 @@ router.post('/preview', async (req, res) => {
             },
             voice: {
                 languageCode: languageCode || 'en-US',
-                name: voiceName || 'en-US-Studio-O',
+                name: voiceName || 'en-US-Neural2-D',
             },
             audioConfig: {
                 audioEncoding: 'MP3',
@@ -198,6 +206,8 @@ router.post('/preview', async (req, res) => {
                 speakingRate: speakingRate || 1.0,
             },
         };
+
+        console.log('🎙️ Calling Google TTS API with voice:', ttsRequest.voice.name);
 
         const response = await axios.post(
             `${GOOGLE_TTS_API}/text:synthesize?key=${apiKey}`,
@@ -213,6 +223,8 @@ router.post('/preview', async (req, res) => {
             throw new Error('No audio content in response');
         }
 
+        console.log('✅ TTS Preview generated successfully');
+
         // Return base64 audio directly for preview
         res.json({
             audioBase64: response.data.audioContent,
@@ -221,9 +233,28 @@ router.post('/preview', async (req, res) => {
 
     } catch (error) {
         console.error('❌ Google TTS preview error:', error.response?.data || error.message);
+        
+        // More detailed error message
+        let errorMessage = 'Failed to generate preview';
+        let errorDetail = error.message;
+        
+        if (error.response?.data?.error) {
+            const apiError = error.response.data.error;
+            errorMessage = apiError.message || errorMessage;
+            errorDetail = apiError.status || errorDetail;
+            
+            // Common error hints
+            if (apiError.status === 'PERMISSION_DENIED') {
+                errorMessage = 'Google TTS API not enabled or API key lacks permission';
+            } else if (apiError.status === 'INVALID_ARGUMENT') {
+                errorMessage = 'Invalid voice name or configuration';
+            }
+        }
+        
         res.status(500).json({ 
-            message: 'Failed to generate preview', 
-            error: error.response?.data?.error?.message || error.message 
+            message: errorMessage, 
+            error: errorDetail,
+            hint: 'Check that GOOGLE_TTS_API_KEY is set and the Text-to-Speech API is enabled in Google Cloud Console'
         });
     }
 });
