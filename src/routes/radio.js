@@ -1524,14 +1524,14 @@ router.post('/host-break/generate', async (req, res) => {
             const shuffled = allHosts.sort(() => Math.random() - 0.5);
             host = shuffled[0];
             secondHost = shuffled[1];
-            console.log(`📻 Generating DUO host break for "${nextSongTitle}" with ${host.name} & ${secondHost.name}`);
+            console.log(`📻 Generating DUO host break for "${nextSongTitle}" with ${host.name} (${host.gender}) & ${secondHost.name} (${secondHost.gender})`);
         } else {
             if (hostId) {
                 host = await RadioHost.findById(hostId);
             } else {
                 host = allHosts[Math.floor(Math.random() * allHosts.length)];
             }
-            console.log(`📻 Generating host break for "${nextSongTitle}" with ${host.name}`);
+            console.log(`📻 Generating host break for "${nextSongTitle}" with ${host.name} (gender: ${host.gender})`);
         }
         
         // Check for custom intro script
@@ -1542,12 +1542,15 @@ router.post('/host-break/generate', async (req, res) => {
         if (hasCustomIntro) {
             // Use custom intro script
             script = station.customIntroScript.trim();
-            console.log(`📝 Using custom intro script`);
             
-            // Generate TTS for custom script (use duo if it looks like dialogue)
-            const looksLikeDuo = script.includes(':') && (script.includes(host.name) || script.includes(secondHost?.name));
+            // Check if script looks like a dialogue (has "Name:" pattern)
+            const hasDialoguePattern = /^[A-Za-z]+\s*:/m.test(script);
+            const looksLikeDuo = hasDialoguePattern && secondHost;
             
-            if (looksLikeDuo && secondHost) {
+            console.log(`📝 Using custom intro script (duo mode: ${looksLikeDuo})`);
+            
+            if (looksLikeDuo) {
+                console.log(`🎭 Duo TTS with ${host.name} (${host.gender}) & ${secondHost.name} (${secondHost.gender})`);
                 audioUrl = await generateDuoTTSAudio(script, {
                     host1Gender: host.gender || 'male',
                     host2Gender: secondHost.gender || 'female',
