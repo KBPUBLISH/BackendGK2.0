@@ -173,23 +173,56 @@ const GEMINI_TTS_SPEAKERS = [
     'Kore', 'Charon', 'Fenrir', 'Aoede', 'Puck', 'Leda', 'Orus', 'Zephyr'
 ];
 
-// Helper: Generate TTS audio using Gemini 2.5 Flash TTS (supports emotional cues!)
-const generateTTSAudio = async (text, voiceConfig) => {
-    const geminiKey = process.env.GEMINI_API_KEY;
+// Get access token for Vertex AI using service account
+const getVertexAccessToken = async () => {
+    const credentialsJson = process.env.GCS_CREDENTIALS_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    if (!credentialsJson) return null;
     
-    // Try Gemini TTS first (supports emotional cues)
-    if (geminiKey) {
+    try {
+        const { GoogleAuth } = require('google-auth-library');
+        const credentials = JSON.parse(credentialsJson);
+        const auth = new GoogleAuth({
+            credentials,
+            scopes: ['https://www.googleapis.com/auth/cloud-platform']
+        });
+        const client = await auth.getClient();
+        const token = await client.getAccessToken();
+        return token.token;
+    } catch (err) {
+        console.error('❌ Failed to get Vertex access token:', err.message);
+        return null;
+    }
+};
+
+// Helper: Generate TTS audio using Vertex AI Gemini TTS or Google Cloud TTS fallback
+const generateTTSAudio = async (text, voiceConfig) => {
+    const credentialsJson = process.env.GCS_CREDENTIALS_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    
+    // Try Vertex AI Gemini TTS first (supports emotional cues)
+    if (credentialsJson) {
         try {
-            console.log('🎙️ Trying Gemini 2.5 Flash TTS...');
+            console.log('🎙️ Trying Vertex AI Gemini TTS...');
+            
+            const credentials = JSON.parse(credentialsJson);
+            const projectId = credentials.project_id;
+            const accessToken = await getVertexAccessToken();
+            
+            if (!accessToken) {
+                throw new Error('Could not get access token');
+            }
             
             // Map voice config to Gemini speaker or use default
             const speaker = voiceConfig.geminiSpeaker || 'Kore';
             
+            // Use Vertex AI endpoint
             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiKey}`,
+                `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent`,
                 {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
                     body: JSON.stringify({
                         contents: [{
                             parts: [{ text: text }]
@@ -216,9 +249,9 @@ const generateTTSAudio = async (text, voiceConfig) => {
                     // audioData is base64 encoded
                     const audioBuffer = Buffer.from(audioData, 'base64');
                     
-                    // Get mime type from response (Gemini TTS returns audio/L16 or audio/wav typically)
+                    // Get mime type from response
                     const mimeType = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || 'audio/wav';
-                    console.log(`🎵 Gemini TTS audio format: ${mimeType}`);
+                    console.log(`🎵 Vertex AI TTS audio format: ${mimeType}, size: ${audioBuffer.length} bytes`);
                     
                     // Determine file extension based on mime type
                     let extension = 'wav';
@@ -230,8 +263,9 @@ const generateTTSAudio = async (text, voiceConfig) => {
                         extension = 'ogg';
                         contentType = 'audio/ogg';
                     } else if (mimeType.includes('L16') || mimeType.includes('pcm')) {
-                        extension = 'wav';
-                        contentType = 'audio/wav';
+                        // PCM needs to be converted - skip for now and fall back
+                        console.log('⚠️ PCM audio format not supported, falling back to Google Cloud TTS');
+                        throw new Error('PCM format not supported');
                     }
                     
                     // Save to GCS
@@ -246,16 +280,16 @@ const generateTTSAudio = async (text, voiceConfig) => {
                             stream.on('finish', resolve);
                             stream.end(audioBuffer);
                         });
-                        console.log(`✅ Gemini TTS audio saved to GCS (${extension})`);
+                        console.log(`✅ Vertex AI TTS audio saved to GCS (${extension})`);
                         return `https://storage.googleapis.com/${bucket.name}/${filename}`;
                     }
                 }
             } else {
                 const errorText = await response.text();
-                console.log('⚠️ Gemini TTS not available, falling back to Google Cloud TTS:', errorText);
+                console.log('⚠️ Vertex AI TTS error, falling back to Google Cloud TTS:', errorText);
             }
         } catch (err) {
-            console.log('⚠️ Gemini TTS error, falling back:', err.message);
+            console.log('⚠️ Vertex AI TTS error, falling back:', err.message);
         }
     }
     
@@ -1096,6 +1130,9 @@ router.post('/host-break/generate', async (req, res) => {
         const estimatedDuration = Math.ceil((wordCount / 2.5));
 
         console.log(`✅ Host break generated: ${audioUrl ? 'with audio' : 'script only'}`);
+        if (audioUrl) {
+            console.log(`🔗 Audio URL: ${audioUrl}`);
+        }
 
         res.json({
             success: true,
