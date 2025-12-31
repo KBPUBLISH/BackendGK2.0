@@ -33,35 +33,48 @@ const getTTSClient = () => {
 
 // Available Google TTS voices (curated list of high-quality voices for radio)
 const AVAILABLE_VOICES = [
-    // Studio voices (highest quality, natural-sounding)
-    { name: 'en-US-Studio-O', gender: 'FEMALE', description: 'Warm, friendly female (Studio quality)', languageCode: 'en-US' },
-    { name: 'en-US-Studio-Q', gender: 'MALE', description: 'Warm, friendly male (Studio quality)', languageCode: 'en-US' },
+    // ========== CHIRP 3 HD VOICES (Newest, Highest Quality) ==========
+    // Female Chirp 3 HD voices
+    { name: 'en-US-Chirp3-HD-Vindemiatrix', gender: 'FEMALE', description: 'Clear, friendly young adult female - Standard American', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Laomedeia', gender: 'FEMALE', description: 'Warm, nurturing mature female - Great for storytelling', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Achernar', gender: 'FEMALE', description: 'Bright, energetic young adult female', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Gacrux', gender: 'FEMALE', description: 'Professional, confident female voice', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Pulcherrima', gender: 'FEMALE', description: 'Soft, gentle female - Perfect for calming content', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Chara', gender: 'FEMALE', description: 'Cheerful, upbeat young female', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Zosma', gender: 'FEMALE', description: 'Clear, articulate female - Great for instructions', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Auva', gender: 'FEMALE', description: 'Warm, motherly female voice', languageCode: 'en-US', tier: 'chirp3-hd' },
     
-    // Neural2 voices (very high quality)
-    { name: 'en-US-Neural2-A', gender: 'MALE', description: 'Natural male voice', languageCode: 'en-US' },
-    { name: 'en-US-Neural2-C', gender: 'FEMALE', description: 'Natural female voice', languageCode: 'en-US' },
-    { name: 'en-US-Neural2-D', gender: 'MALE', description: 'Deep male voice', languageCode: 'en-US' },
-    { name: 'en-US-Neural2-E', gender: 'FEMALE', description: 'Expressive female voice', languageCode: 'en-US' },
-    { name: 'en-US-Neural2-F', gender: 'FEMALE', description: 'Warm female voice', languageCode: 'en-US' },
-    { name: 'en-US-Neural2-G', gender: 'FEMALE', description: 'Bright female voice', languageCode: 'en-US' },
-    { name: 'en-US-Neural2-H', gender: 'FEMALE', description: 'Casual female voice', languageCode: 'en-US' },
-    { name: 'en-US-Neural2-I', gender: 'MALE', description: 'Casual male voice', languageCode: 'en-US' },
-    { name: 'en-US-Neural2-J', gender: 'MALE', description: 'Professional male voice', languageCode: 'en-US' },
+    // Male Chirp 3 HD voices  
+    { name: 'en-US-Chirp3-HD-Algieba', gender: 'MALE', description: 'Mature adult male - Professional, authoritative', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Zubenelgenubi', gender: 'MALE', description: 'Clear, friendly young adult male - Tech-focused', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Sadachbia', gender: 'MALE', description: 'Energetic mature male - Fast paced, confident', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Iapetus', gender: 'MALE', description: 'Friendly conversational male - Versatile', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Enceladus', gender: 'MALE', description: 'Warm, friendly mature male - Great for assistants', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Algenib', gender: 'MALE', description: 'Confident, professional male - Fast paced', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Schedar', gender: 'MALE', description: 'Deep, warm male voice - Storytelling', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Rasalhague', gender: 'MALE', description: 'Clear, engaging male - Educational content', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Alnilam', gender: 'MALE', description: 'Calm, soothing male voice', languageCode: 'en-US', tier: 'chirp3-hd' },
+    { name: 'en-US-Chirp3-HD-Kochab', gender: 'MALE', description: 'Friendly, approachable male', languageCode: 'en-US', tier: 'chirp3-hd' },
     
-    // Polyglot voices (can speak multiple languages naturally)
-    { name: 'en-US-Polyglot-1', gender: 'MALE', description: 'Multilingual male voice', languageCode: 'en-US' },
+    // ========== STUDIO VOICES (High Quality) ==========
+    { name: 'en-US-Studio-O', gender: 'FEMALE', description: 'Warm, friendly female (Studio quality)', languageCode: 'en-US', tier: 'studio' },
+    { name: 'en-US-Studio-Q', gender: 'MALE', description: 'Warm, friendly male (Studio quality)', languageCode: 'en-US', tier: 'studio' },
     
-    // News voices (clear, broadcast-style)
-    { name: 'en-US-News-K', gender: 'FEMALE', description: 'News anchor female', languageCode: 'en-US' },
-    { name: 'en-US-News-L', gender: 'FEMALE', description: 'Reporter female', languageCode: 'en-US' },
-    { name: 'en-US-News-N', gender: 'MALE', description: 'News anchor male', languageCode: 'en-US' },
+    // ========== JOURNEY VOICES (Storytelling) ==========
+    { name: 'en-US-Journey-D', gender: 'MALE', description: 'Storytelling male voice', languageCode: 'en-US', tier: 'journey' },
+    { name: 'en-US-Journey-F', gender: 'FEMALE', description: 'Storytelling female voice', languageCode: 'en-US', tier: 'journey' },
+    { name: 'en-US-Journey-O', gender: 'FEMALE', description: 'Expressive storytelling female', languageCode: 'en-US', tier: 'journey' },
     
-    // Journey voices (storytelling)
-    { name: 'en-US-Journey-D', gender: 'MALE', description: 'Storytelling male voice', languageCode: 'en-US' },
-    { name: 'en-US-Journey-F', gender: 'FEMALE', description: 'Storytelling female voice', languageCode: 'en-US' },
+    // ========== NEWS VOICES (Broadcast Style) ==========
+    { name: 'en-US-News-K', gender: 'FEMALE', description: 'News anchor female', languageCode: 'en-US', tier: 'news' },
+    { name: 'en-US-News-L', gender: 'FEMALE', description: 'Reporter female', languageCode: 'en-US', tier: 'news' },
+    { name: 'en-US-News-N', gender: 'MALE', description: 'News anchor male', languageCode: 'en-US', tier: 'news' },
     
-    // Casual voices
-    { name: 'en-US-Casual-K', gender: 'MALE', description: 'Casual conversational male', languageCode: 'en-US' },
+    // ========== NEURAL2 VOICES (Very High Quality) ==========
+    { name: 'en-US-Neural2-A', gender: 'MALE', description: 'Natural male voice', languageCode: 'en-US', tier: 'neural2' },
+    { name: 'en-US-Neural2-C', gender: 'FEMALE', description: 'Natural female voice', languageCode: 'en-US', tier: 'neural2' },
+    { name: 'en-US-Neural2-D', gender: 'MALE', description: 'Deep male voice', languageCode: 'en-US', tier: 'neural2' },
+    { name: 'en-US-Neural2-F', gender: 'FEMALE', description: 'Warm female voice', languageCode: 'en-US', tier: 'neural2' },
 ];
 
 // Helper to save audio buffer to GCS or local
@@ -126,14 +139,15 @@ router.post('/generate', async (req, res) => {
             });
         }
 
-        console.log(`🎙️ Generating TTS: "${text.substring(0, 50)}..." with voice ${voiceName || 'default'}`);
+        const selectedVoice = voiceName || 'en-US-Chirp3-HD-Enceladus';
+        console.log(`🎙️ Generating TTS: "${text.substring(0, 50)}..." with voice ${selectedVoice}`);
 
         // Prepare the request
         const request = {
             input: { text },
             voice: {
                 languageCode: languageCode || 'en-US',
-                name: voiceName || 'en-US-Neural2-D',
+                name: selectedVoice,
             },
             audioConfig: {
                 audioEncoding: 'MP3',
@@ -170,7 +184,7 @@ router.post('/generate', async (req, res) => {
             audioBase64: audioUrl ? null : audioBuffer.toString('base64'),
             duration: estimatedDuration,
             text,
-            voice: voiceName || 'en-US-Neural2-D',
+            voice: selectedVoice,
         });
 
     } catch (error) {
@@ -205,11 +219,13 @@ router.post('/preview', async (req, res) => {
             });
         }
 
+        const selectedVoice = voiceName || 'en-US-Chirp3-HD-Enceladus';
+        
         const request = {
             input: { text: previewText },
             voice: {
                 languageCode: languageCode || 'en-US',
-                name: voiceName || 'en-US-Neural2-D',
+                name: selectedVoice,
             },
             audioConfig: {
                 audioEncoding: 'MP3',
@@ -218,7 +234,7 @@ router.post('/preview', async (req, res) => {
             },
         };
 
-        console.log('🎙️ Calling Google TTS with voice:', request.voice.name);
+        console.log('🎙️ Calling Google TTS with Chirp 3 HD voice:', selectedVoice);
 
         const [response] = await client.synthesizeSpeech(request);
 
