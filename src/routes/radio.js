@@ -251,7 +251,7 @@ const generateTTSAudio = async (text, voiceConfig) => {
                 
                 if (audioData) {
                     // audioData is base64 encoded
-                    const audioBuffer = Buffer.from(audioData, 'base64');
+                    let audioBuffer = Buffer.from(audioData, 'base64');
                     
                     // Get mime type from response
                     const mimeType = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || 'audio/wav';
@@ -267,9 +267,38 @@ const generateTTSAudio = async (text, voiceConfig) => {
                         extension = 'ogg';
                         contentType = 'audio/ogg';
                     } else if (mimeType.includes('L16') || mimeType.includes('pcm')) {
-                        // PCM needs to be converted - skip for now and fall back
-                        console.log('⚠️ PCM audio format not supported, falling back to Google Cloud TTS');
-                        throw new Error('PCM format not supported');
+                        // PCM L16 - convert to WAV by adding header
+                        console.log('🔄 Converting PCM to WAV...');
+                        
+                        // Parse sample rate from mime type (e.g., "audio/L16;codec=pcm;rate=24000")
+                        const rateMatch = mimeType.match(/rate=(\d+)/);
+                        const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
+                        const numChannels = 1; // Mono
+                        const bitsPerSample = 16; // L16 = 16-bit
+                        const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+                        const blockAlign = numChannels * (bitsPerSample / 8);
+                        
+                        // Create WAV header (44 bytes)
+                        const wavHeader = Buffer.alloc(44);
+                        wavHeader.write('RIFF', 0);
+                        wavHeader.writeUInt32LE(36 + audioBuffer.length, 4); // File size - 8
+                        wavHeader.write('WAVE', 8);
+                        wavHeader.write('fmt ', 12);
+                        wavHeader.writeUInt32LE(16, 16); // Subchunk1 size
+                        wavHeader.writeUInt16LE(1, 20); // Audio format (PCM)
+                        wavHeader.writeUInt16LE(numChannels, 22);
+                        wavHeader.writeUInt32LE(sampleRate, 24);
+                        wavHeader.writeUInt32LE(byteRate, 28);
+                        wavHeader.writeUInt16LE(blockAlign, 32);
+                        wavHeader.writeUInt16LE(bitsPerSample, 34);
+                        wavHeader.write('data', 36);
+                        wavHeader.writeUInt32LE(audioBuffer.length, 40);
+                        
+                        // Combine header + PCM data
+                        audioBuffer = Buffer.concat([wavHeader, audioBuffer]);
+                        extension = 'wav';
+                        contentType = 'audio/wav';
+                        console.log(`✅ Converted to WAV: ${audioBuffer.length} bytes, ${sampleRate}Hz`);
                     }
                     
                     // Save to GCS
