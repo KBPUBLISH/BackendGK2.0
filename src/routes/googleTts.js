@@ -1,11 +1,35 @@
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const crypto = require('crypto');
 const { bucket } = require('../config/storage');
+const textToSpeech = require('@google-cloud/text-to-speech');
 
-// Google Cloud TTS API endpoint
-const GOOGLE_TTS_API = 'https://texttospeech.googleapis.com/v1';
+// Initialize Google Cloud TTS client
+// Uses GOOGLE_APPLICATION_CREDENTIALS env var or GCS_CREDENTIALS_JSON
+let ttsClient = null;
+
+const getTTSClient = () => {
+    if (ttsClient) return ttsClient;
+    
+    try {
+        // Check if we have credentials from GCS config (same as storage.js uses)
+        if (process.env.GCS_CREDENTIALS_JSON) {
+            const credentials = JSON.parse(process.env.GCS_CREDENTIALS_JSON);
+            ttsClient = new textToSpeech.TextToSpeechClient({ credentials });
+            console.log('✅ Google TTS: Using GCS_CREDENTIALS_JSON');
+        } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+            ttsClient = new textToSpeech.TextToSpeechClient();
+            console.log('✅ Google TTS: Using GOOGLE_APPLICATION_CREDENTIALS file');
+        } else {
+            console.error('❌ Google TTS: No credentials configured');
+            return null;
+        }
+        return ttsClient;
+    } catch (error) {
+        console.error('❌ Google TTS client init error:', error.message);
+        return null;
+    }
+};
 
 // Available Google TTS voices (curated list of high-quality voices for radio)
 const AVAILABLE_VOICES = [
@@ -94,50 +118,39 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ message: 'Text is required' });
         }
 
-        const apiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY;
-        if (!apiKey) {
+        const client = getTTSClient();
+        if (!client) {
             return res.status(500).json({ 
-                message: 'Google TTS API key not configured',
-                hint: 'Set GOOGLE_TTS_API_KEY in your .env file'
+                message: 'Google TTS not configured',
+                hint: 'Set GCS_CREDENTIALS_JSON environment variable with service account credentials'
             });
         }
 
         console.log(`🎙️ Generating TTS: "${text.substring(0, 50)}..." with voice ${voiceName || 'default'}`);
 
-        // Prepare the request to Google TTS API
-        const ttsRequest = {
-            input: {
-                text: text,
-            },
+        // Prepare the request
+        const request = {
+            input: { text },
             voice: {
                 languageCode: languageCode || 'en-US',
-                name: voiceName || 'en-US-Studio-O',
+                name: voiceName || 'en-US-Neural2-D',
             },
             audioConfig: {
                 audioEncoding: 'MP3',
                 pitch: pitch || 0,
                 speakingRate: speakingRate || 1.0,
-                // Add effects for radio-quality audio
                 effectsProfileId: ['headphone-class-device'],
             },
         };
 
-        const response = await axios.post(
-            `${GOOGLE_TTS_API}/text:synthesize?key=${apiKey}`,
-            ttsRequest,
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            }
-        );
+        const [response] = await client.synthesizeSpeech(request);
 
-        if (!response.data || !response.data.audioContent) {
+        if (!response.audioContent) {
             throw new Error('No audio content in response');
         }
 
-        // Decode base64 audio
-        const audioBuffer = Buffer.from(response.data.audioContent, 'base64');
+        // audioContent is already a Buffer
+        const audioBuffer = response.audioContent;
 
         // Generate unique filename
         const hash = crypto.createHash('md5').update(text + voiceName + Date.now()).digest('hex');
@@ -154,17 +167,17 @@ router.post('/generate', async (req, res) => {
 
         res.json({
             audioUrl,
-            audioBase64: audioUrl ? null : response.data.audioContent, // Return base64 if GCS not available
+            audioBase64: audioUrl ? null : audioBuffer.toString('base64'),
             duration: estimatedDuration,
             text,
-            voice: voiceName || 'en-US-Studio-O',
+            voice: voiceName || 'en-US-Neural2-D',
         });
 
     } catch (error) {
-        console.error('❌ Google TTS error:', error.response?.data || error.message);
+        console.error('❌ Google TTS error:', error.message);
         res.status(500).json({ 
             message: 'Failed to generate TTS audio', 
-            error: error.response?.data?.error?.message || error.message 
+            error: error.message 
         });
     }
 });
@@ -176,26 +189,24 @@ router.post('/preview', async (req, res) => {
 
         const previewText = text || 'Hello! Welcome to Praise Station Radio, where we lift up your spirit with uplifting music and encouraging words.';
 
-        const apiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY;
+        const client = getTTSClient();
         
         console.log('🎙️ TTS Preview request:', { 
             voiceName, 
-            hasApiKey: !!apiKey,
+            hasClient: !!client,
             textLength: previewText.length 
         });
         
-        if (!apiKey) {
-            console.error('❌ GOOGLE_TTS_API_KEY not set in environment');
+        if (!client) {
+            console.error('❌ Google TTS client not initialized');
             return res.status(500).json({ 
-                message: 'Google TTS API key not configured',
-                hint: 'Set GOOGLE_TTS_API_KEY environment variable in Render'
+                message: 'Google TTS not configured',
+                hint: 'Set GCS_CREDENTIALS_JSON environment variable with service account credentials'
             });
         }
 
-        const ttsRequest = {
-            input: {
-                text: previewText,
-            },
+        const request = {
+            input: { text: previewText },
             voice: {
                 languageCode: languageCode || 'en-US',
                 name: voiceName || 'en-US-Neural2-D',
@@ -207,19 +218,11 @@ router.post('/preview', async (req, res) => {
             },
         };
 
-        console.log('🎙️ Calling Google TTS API with voice:', ttsRequest.voice.name);
+        console.log('🎙️ Calling Google TTS with voice:', request.voice.name);
 
-        const response = await axios.post(
-            `${GOOGLE_TTS_API}/text:synthesize?key=${apiKey}`,
-            ttsRequest,
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            }
-        );
+        const [response] = await client.synthesizeSpeech(request);
 
-        if (!response.data || !response.data.audioContent) {
+        if (!response.audioContent) {
             throw new Error('No audio content in response');
         }
 
@@ -227,34 +230,29 @@ router.post('/preview', async (req, res) => {
 
         // Return base64 audio directly for preview
         res.json({
-            audioBase64: response.data.audioContent,
+            audioBase64: response.audioContent.toString('base64'),
             contentType: 'audio/mpeg',
         });
 
     } catch (error) {
-        console.error('❌ Google TTS preview error:', error.response?.data || error.message);
+        console.error('❌ Google TTS preview error:', error.message);
         
-        // More detailed error message
         let errorMessage = 'Failed to generate preview';
-        let errorDetail = error.message;
+        let hint = 'Check that GCS_CREDENTIALS_JSON is set and the Text-to-Speech API is enabled';
         
-        if (error.response?.data?.error) {
-            const apiError = error.response.data.error;
-            errorMessage = apiError.message || errorMessage;
-            errorDetail = apiError.status || errorDetail;
-            
-            // Common error hints
-            if (apiError.status === 'PERMISSION_DENIED') {
-                errorMessage = 'Google TTS API not enabled or API key lacks permission';
-            } else if (apiError.status === 'INVALID_ARGUMENT') {
-                errorMessage = 'Invalid voice name or configuration';
-            }
+        // Common error patterns
+        if (error.message.includes('PERMISSION_DENIED')) {
+            errorMessage = 'Text-to-Speech API not enabled in Google Cloud Console';
+            hint = 'Go to Google Cloud Console → APIs & Services → Enable "Cloud Text-to-Speech API"';
+        } else if (error.message.includes('INVALID_ARGUMENT')) {
+            errorMessage = 'Invalid voice name or configuration';
+            hint = 'Check that the voice name exists in the available voices list';
         }
         
         res.status(500).json({ 
             message: errorMessage, 
-            error: errorDetail,
-            hint: 'Check that GOOGLE_TTS_API_KEY is set and the Text-to-Speech API is enabled in Google Cloud Console'
+            error: error.message,
+            hint
         });
     }
 });
