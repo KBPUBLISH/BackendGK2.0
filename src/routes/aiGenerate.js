@@ -784,6 +784,15 @@ router.post('/radio-script', async (req, res) => {
 2. Introduce the devotional "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
 3. Encourage listeners to open their hearts
 4. ${contentDescription ? `Mention what the devotional is about: "${contentDescription}"` : 'Build anticipation for spiritual growth'}`;
+        } else if (contentType === 'station_intro') {
+            // Welcome intro when station starts
+            taskDescription = `YOUR TASK: Write an enthusiastic WELCOME introduction to the radio station. This plays when a listener first tunes in. The segment should:
+1. Welcome listeners warmly to "${stationName}"!
+2. Express excitement about the wonderful music and content ahead
+3. Briefly mention what makes this station special (uplifting Christian music, stories, and encouragement for the whole family)
+4. Share a quick blessing or encouraging word
+5. Introduce the first song coming up: "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
+6. Invite them to sit back, relax, and enjoy!`;
         } else {
             // Default: introducing a song
             taskDescription = `YOUR TASK: Write a short radio host segment that will be spoken aloud. The segment should:
@@ -984,6 +993,16 @@ function getFallbackRadioScript(hostName, songTitle, songArtist, contentType = '
             `Let this devotional speak to your soul. Here's "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}.`,
         ];
         return devotionalIntros[Math.floor(Math.random() * devotionalIntros.length)];
+    }
+
+    // Station intro fallbacks
+    if (contentType === 'station_intro') {
+        const stationIntros = [
+            `Welcome to Praise Station Radio! We're so glad you're here. Get ready for uplifting music, inspiring stories, and God's love filling your day. Let's start with "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}!`,
+            `Hello and welcome to Praise Station Radio, your home for family-friendly Christian music and encouragement! We're blessed to have you with us. Coming up first, here's "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}.`,
+            `You're listening to Praise Station Radio! Thank you for tuning in. We've got wonderful music and stories to share with you today. Let's get started with "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}. Enjoy!`,
+        ];
+        return stationIntros[Math.floor(Math.random() * stationIntros.length)];
     }
 
     // Default: song fallbacks
