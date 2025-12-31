@@ -1,34 +1,38 @@
+require('dotenv').config();
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const { bucket } = require('../config/storage');
 const textToSpeech = require('@google-cloud/text-to-speech');
 
-// Initialize Google Cloud TTS client
-// Uses GOOGLE_APPLICATION_CREDENTIALS env var or GCS_CREDENTIALS_JSON
+// Initialize Google Cloud TTS client at module load time (same pattern as storage.js)
 let ttsClient = null;
 
-const getTTSClient = () => {
-    if (ttsClient) return ttsClient;
-    
+// Try multiple methods to load credentials (matching storage.js pattern)
+const credentialsJson = process.env.GCS_CREDENTIALS_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
+if (credentialsJson) {
     try {
-        // Check if we have credentials from GCS config (same as storage.js uses)
-        if (process.env.GCS_CREDENTIALS_JSON) {
-            const credentials = JSON.parse(process.env.GCS_CREDENTIALS_JSON);
-            ttsClient = new textToSpeech.TextToSpeechClient({ credentials });
-            console.log('✅ Google TTS: Using GCS_CREDENTIALS_JSON');
-        } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-            ttsClient = new textToSpeech.TextToSpeechClient();
-            console.log('✅ Google TTS: Using GOOGLE_APPLICATION_CREDENTIALS file');
-        } else {
-            console.error('❌ Google TTS: No credentials configured');
-            return null;
-        }
-        return ttsClient;
-    } catch (error) {
-        console.error('❌ Google TTS client init error:', error.message);
-        return null;
+        const credentials = JSON.parse(credentialsJson);
+        ttsClient = new textToSpeech.TextToSpeechClient({ credentials });
+        console.log('✅ Google TTS: Loaded credentials from GCS_CREDENTIALS_JSON');
+    } catch (e) {
+        console.error('❌ Google TTS: Failed to parse credentials JSON:', e.message);
     }
+} else if (credentialsPath) {
+    try {
+        ttsClient = new textToSpeech.TextToSpeechClient();
+        console.log('✅ Google TTS: Using GOOGLE_APPLICATION_CREDENTIALS file');
+    } catch (e) {
+        console.error('❌ Google TTS: Failed to load from credentials file:', e.message);
+    }
+} else {
+    console.error('❌ Google TTS: No credentials configured (need GCS_CREDENTIALS_JSON or GOOGLE_APPLICATION_CREDENTIALS)');
+}
+
+const getTTSClient = () => {
+    return ttsClient;
 };
 
 // Available Google TTS voices (curated list of high-quality voices for radio)
