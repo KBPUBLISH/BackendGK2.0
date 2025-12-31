@@ -345,7 +345,7 @@ child-friendly playlist cover. Keep it fun, colorful, and appropriate for childr
 Be concise (max 2 sentences). Only respond with the enhanced description, nothing else.`;
 
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -427,7 +427,7 @@ Return ONLY the JSON array, no other text.`;
         console.log(`🎯 Generating AI comments for book: "${bookTitle}"`);
         
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -599,7 +599,7 @@ Return ONLY the JSON array, no other text.`;
         console.log(`🎯 Generating AI comments for ${isAudiobook ? 'AUDIOBOOK' : 'MUSIC'} playlist: "${playlistName}"`);
         
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -823,7 +823,7 @@ Respond with ONLY the script text, nothing else.`;
         console.log(`📻 Generating radio script for "${nextSongTitle}" with host ${hostName || 'default'}`);
 
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

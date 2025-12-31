@@ -114,7 +114,7 @@ Respond with ONLY the script (including emotional cues where appropriate).`;
 
     try {
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -216,19 +216,37 @@ const generateTTSAudio = async (text, voiceConfig) => {
                     // audioData is base64 encoded
                     const audioBuffer = Buffer.from(audioData, 'base64');
                     
+                    // Get mime type from response (Gemini TTS returns audio/L16 or audio/wav typically)
+                    const mimeType = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || 'audio/wav';
+                    console.log(`🎵 Gemini TTS audio format: ${mimeType}`);
+                    
+                    // Determine file extension based on mime type
+                    let extension = 'wav';
+                    let contentType = 'audio/wav';
+                    if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+                        extension = 'mp3';
+                        contentType = 'audio/mpeg';
+                    } else if (mimeType.includes('ogg')) {
+                        extension = 'ogg';
+                        contentType = 'audio/ogg';
+                    } else if (mimeType.includes('L16') || mimeType.includes('pcm')) {
+                        extension = 'wav';
+                        contentType = 'audio/wav';
+                    }
+                    
                     // Save to GCS
                     const hash = crypto.createHash('md5').update(text + Date.now()).digest('hex');
-                    const filename = `radio/tts/hostbreak_${hash}.mp3`;
+                    const filename = `radio/tts/hostbreak_${hash}.${extension}`;
                     
                     if (bucket) {
                         const blob = bucket.file(filename);
                         await new Promise((resolve, reject) => {
-                            const stream = blob.createWriteStream({ metadata: { contentType: 'audio/mpeg' } });
+                            const stream = blob.createWriteStream({ metadata: { contentType } });
                             stream.on('error', reject);
                             stream.on('finish', resolve);
                             stream.end(audioBuffer);
                         });
-                        console.log('✅ Gemini TTS audio saved to GCS');
+                        console.log(`✅ Gemini TTS audio saved to GCS (${extension})`);
                         return `https://storage.googleapis.com/${bucket.name}/${filename}`;
                     }
                 }
