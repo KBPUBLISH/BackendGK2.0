@@ -51,37 +51,36 @@ const generateRadioScript = async (options) => {
     let contextInfo = contentDescription ? `\nCONTENT DESCRIPTION: ${contentDescription}` : '';
 
     if (contentType === 'station_intro') {
-        taskDescription = `YOUR TASK: Write an enthusiastic WELCOME introduction. This plays when a listener first tunes in.
+        taskDescription = `YOUR TASK: Write an enthusiastic WELCOME introduction for the station.
 1. Welcome listeners warmly to "${stationName}"!
-2. You may introduce yourself by name (e.g., "I'm ${hostName}")
-3. Express excitement about the music ahead
+2. Introduce yourself by name (e.g., "I'm ${hostName}")
+3. Express excitement about the music and fun ahead
 4. Mention what makes this station special (uplifting Christian music for families)
-5. Share a quick blessing
-6. Introduce the first song: "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}`;
+5. Share a quick blessing or encouragement
+NOTE: Do NOT mention any specific song titles - this is a general welcome!`;
     } else if (contentType === 'story_intro') {
         taskDescription = `YOUR TASK: Write an exciting "story time" introduction.
-1. ${previousSongTitle ? `Briefly wrap up "${previousSongTitle}"` : 'Build excitement for story time'}
-2. Announce it's STORY TIME with enthusiasm!
-3. Introduce the story "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
-4. ${contentDescription ? 'Tease what the story is about' : 'Build anticipation'}
-5. Invite listeners to get cozy`;
+1. Announce it's STORY TIME with enthusiasm!
+2. Build anticipation for what's coming
+3. ${contentDescription ? 'Tease what the story is about' : 'Invite listeners to get cozy'}
+NOTE: Do NOT introduce yourself by name. Do NOT mention artist names.`;
     } else if (contentType === 'story_outro') {
         taskDescription = `YOUR TASK: Write a warm reflection after the story ended.
 1. Say "I hope you enjoyed that story!"
-2. Reference "${nextSongTitle}"
-3. Share a brief reflection on the story's message
-4. Relate to faith or daily life
-5. Transition to what's next`;
-    } else if (contentType === 'devotional') {
-        taskDescription = `YOUR TASK: Write a reverent devotional introduction.
-1. Create a peaceful atmosphere
-2. Introduce the devotional "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
-3. Encourage listeners to open their hearts`;
+2. Share a brief reflection or takeaway
+3. Encourage listeners
+NOTE: Do NOT introduce yourself by name.`;
+    } else if (contentType === 'devotional' || contentType === 'devotional_segment') {
+        taskDescription = `YOUR TASK: Write a meaningful devotional moment.
+1. Create a peaceful, reflective atmosphere
+2. Share an encouraging thought about faith or God's love
+3. Invite listeners to reflect
+NOTE: Do NOT introduce yourself by name. Keep it warm and genuine.`;
     } else {
-        taskDescription = `YOUR TASK: Write a short radio host segment.
-1. ${previousSongTitle ? `Briefly reflect on "${previousSongTitle}"` : 'Start with a warm greeting'}
-2. Share a brief encouraging message
-3. Introduce "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}`;
+        taskDescription = `YOUR TASK: Write a SHORT radio transition (just a few sentences).
+1. Share a quick encouraging thought or blessing
+2. Naturally lead into the next song
+NOTE: Do NOT introduce yourself by name. Do NOT mention artist names. Do NOT reference specific time like "yesterday" or "this morning".`;
     }
     
     // IMPORTANT: Host name is for AI context, NOT to be used addressing listeners
@@ -99,8 +98,10 @@ REQUIREMENTS:
 - Family-friendly
 - Warm and genuine
 - Reference God, faith, blessings naturally
-- Address listeners as "friends", "everyone", or "you" - NEVER use your own name to address them
-- You may introduce yourself by name ONCE at the start if it's a station intro
+- Address listeners as "friends", "everyone", or "you"
+- NEVER use temporal references like "yesterday", "this morning", "earlier today"
+- NEVER mention artist names (just song titles if needed)
+- Only introduce yourself by name if this is the STATION INTRO
 
 EMOTIONAL CUES (use sparingly for expressiveness):
 - Add [excited] before enthusiastic parts
@@ -151,27 +152,171 @@ Respond with ONLY the script (including emotional cues where appropriate).`;
 };
 
 // Fallback scripts when AI is unavailable
-// Note: hostName is the DJ's name, NOT used to address listeners
 const getFallbackScript = (hostName, songTitle, songArtist, contentType) => {
     const title = songTitle || 'this next song';
-    const artist = songArtist ? ` by ${songArtist}` : '';
 
     if (contentType === 'station_intro') {
-        return `Welcome to Praise Station Radio! I'm so glad you're here with us today. Get ready for uplifting music and encouragement for your whole family. Coming up first, here's "${title}"${artist}. Enjoy!`;
+        return `[excited] Welcome to Praise Station Radio! I'm ${hostName}, and I'm so glad you're here with us! [warm] Get ready for uplifting music and encouragement for your whole family. We've got some wonderful songs lined up for you. Let's have some fun together!`;
     } else if (contentType === 'story_intro') {
-        return `It's story time, friends! Get cozy and ready for a wonderful adventure. Coming up, we have "${title}"${artist}. Let's listen together!`;
+        return `[excited] It's story time, friends! Get cozy and ready for a wonderful adventure. [warm] Let's listen together!`;
     } else if (contentType === 'story_outro') {
-        return `I hope you enjoyed that story! "${title}" reminds us of God's amazing love. What a blessing! Let's continue with more great content.`;
-    } else if (contentType === 'devotional') {
-        return `Let's take a moment to reflect and grow closer to God together. Up next is "${title}"${artist}. Open your heart and listen.`;
+        return `[warm] I hope you enjoyed that story! What a wonderful reminder of God's love. [gentle] Let's keep the good vibes going!`;
+    } else if (contentType === 'devotional' || contentType === 'devotional_segment') {
+        return `[gentle] Let's take a moment to reflect and grow closer to God together. [reverent] Open your heart and listen.`;
     }
-    return `What a blessing to be with you today! Up next we have "${title}"${artist}. May it lift your spirit!`;
+    return `[warm] What a blessing to be with you! [joyful] Here comes another great song to lift your spirit!`;
+};
+
+// Helper: Generate duo radio script (two hosts) using Gemini AI
+const generateDuoRadioScript = async (options) => {
+    const {
+        host1Name,
+        host1Personality,
+        host2Name,
+        host2Personality,
+        nextSongTitle,
+        nextSongArtist,
+        previousSongTitle,
+        previousSongArtist,
+        targetDuration = 60,
+        stationName = 'Praise Station Radio',
+        contentType = 'song',
+        contentDescription = '',
+    } = options;
+
+    const geminiKey = process.env.GEMINI_API_KEY;
+    
+    // Fallback if no API key
+    if (!geminiKey) {
+        return getDuoFallbackScript(host1Name, host2Name, nextSongTitle, nextSongArtist, contentType);
+    }
+
+    const targetWordCount = Math.round(targetDuration * 2.5);
+    let taskDescription = '';
+    let contextInfo = contentDescription ? `\nCONTENT DESCRIPTION: ${contentDescription}` : '';
+
+    if (contentType === 'station_intro') {
+        taskDescription = `YOUR TASK: Write a FUN, NATURAL conversation where BOTH hosts welcome listeners.
+1. They greet each other AND the listeners warmly
+2. BOTH hosts introduce themselves by name
+3. They express excitement about the music and fun ahead
+4. They have natural back-and-forth banter (friendly, playful)
+5. They share what makes Praise Station special (uplifting Christian music for families)
+6. End with excitement about what's coming up
+NOTE: Do NOT mention any specific song titles - this is a general welcome!`;
+    } else if (contentType === 'devotional_segment') {
+        taskDescription = `YOUR TASK: Write a meaningful DEVOTIONAL DISCUSSION between the two hosts.
+1. One host brings up a faith topic thoughtfully
+2. They discuss it naturally with personal reflections
+3. They encourage listeners with practical application
+4. They share hope and God's love
+${contentDescription ? 'THEME: ' + contentDescription : 'THEME: God\'s love, encouragement, or gratitude'}
+NOTE: Do NOT introduce yourselves by name. Do NOT mention artist names.`;
+    } else {
+        taskDescription = `YOUR TASK: Write a SHORT, FUN conversation between the two hosts.
+1. Quick, playful banter (2-3 exchanges)
+2. Share a quick encouraging thought or observation
+3. Natural, warm transition
+NOTE: Do NOT introduce yourselves by name. Do NOT mention artist names. Do NOT use temporal references like "yesterday".`;
+    }
+
+    const prompt = `Write a radio dialogue between TWO hosts on "${stationName}", a Christian family radio station.
+
+HOST 1: "${host1Name}"
+- Personality: ${host1Personality || 'Warm and energetic'}
+
+HOST 2: "${host2Name}"  
+- Personality: ${host2Personality || 'Thoughtful and encouraging'}
+
+${contextInfo}
+
+${taskDescription}
+
+FORMAT YOUR RESPONSE EXACTLY LIKE THIS (use the actual host names):
+${host1Name}: [excited] Hey everyone! Welcome back to Praise Station!
+${host2Name}: [warm] So glad to be here with you today...
+${host1Name}: [joyful] That's right! We've got...
+
+REQUIREMENTS:
+- Target: ~${targetWordCount} words (${targetDuration} seconds)
+- Natural conversation - not scripted-sounding
+- Warm banter between hosts
+- Family-friendly
+- Reference God, faith, blessings naturally
+- Each host speaks 2-4 times
+- NEVER use temporal references like "yesterday", "this morning", "earlier"
+- NEVER mention artist names
+- Only introduce yourselves by name if this is the STATION INTRO
+
+EMOTIONAL CUES (use sparingly):
+- [excited], [warm], [gentle], [joyful], [reverent], [upbeat], [playful]
+
+Respond with ONLY the dialogue script.`;
+
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.9, maxOutputTokens: 500 },
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            console.error('❌ Gemini duo script error:', await response.text());
+            return getDuoFallbackScript(host1Name, host2Name, nextSongTitle, nextSongArtist, contentType);
+        }
+
+        const data = await response.json();
+        const scriptText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+        if (!scriptText) {
+            return getDuoFallbackScript(host1Name, host2Name, nextSongTitle, nextSongArtist, contentType);
+        }
+
+        return scriptText
+            .replace(/\*[^*]+\*/g, '')  // Remove *actions*
+            .replace(/\([^)]+\)/g, '')  // Remove (parentheticals)
+            .replace(/\s+/g, ' ')
+            .trim();
+    } catch (err) {
+        console.error('❌ Duo script generation error:', err.message);
+        return getDuoFallbackScript(host1Name, host2Name, nextSongTitle, nextSongArtist, contentType);
+    }
+};
+
+// Fallback duo scripts
+const getDuoFallbackScript = (host1Name, host2Name, songTitle, songArtist, contentType) => {
+    const h1 = host1Name || 'Host';
+    const h2 = host2Name || 'Co-host';
+
+    if (contentType === 'station_intro') {
+        return `${h1}: [excited] Hey everyone! Welcome to Praise Station Radio! I'm ${h1}!
+${h2}: [warm] And I'm ${h2}! We're so glad you're joining us!
+${h1}: [joyful] That's right! We've got amazing music and fun lined up for you.
+${h2}: [upbeat] Uplifting songs for the whole family!
+${h1}: [excited] Let's get started!`;
+    } else if (contentType === 'devotional_segment') {
+        return `${h1}: [warm] You know, ${h2}, I've been thinking about God's faithfulness.
+${h2}: [gentle] Oh, me too! It's amazing how He's always there for us.
+${h1}: [reverent] Right? No matter what we face, His love never changes.
+${h2}: [warm] Friends, take a moment to think about how God has been faithful in your life.
+${h1}: [gentle] What a beautiful reminder of His love.`;
+    }
+    return `${h1}: [excited] That was great!
+${h2}: [warm] So good! I love this music.
+${h1}: [joyful] Here comes another one!`;
 };
 
 // Gemini TTS speakers (from Google's documentation)
-const GEMINI_TTS_SPEAKERS = [
-    'Kore', 'Charon', 'Fenrir', 'Aoede', 'Puck', 'Leda', 'Orus', 'Zephyr'
-];
+const GEMINI_TTS_SPEAKERS = {
+    male: ['Charon', 'Fenrir', 'Orus', 'Puck', 'Zephyr'],
+    female: ['Kore', 'Aoede', 'Leda']
+};
 
 // Get access token for Vertex AI using service account
 const getVertexAccessToken = async () => {
@@ -395,6 +540,194 @@ const generateTTSAudio = async (text, voiceConfig) => {
     }
 };
 
+// Helper: Generate duo (multi-speaker) TTS audio using Vertex AI
+const generateDuoTTSAudio = async (script, options) => {
+    const { host1Gender, host2Gender, host1Name, host2Name } = options;
+    const credentialsJson = process.env.GCS_CREDENTIALS_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    
+    if (!credentialsJson) {
+        console.error('❌ No credentials for duo TTS');
+        return null;
+    }
+    
+    try {
+        console.log('🎙️ Generating DUO TTS audio with Gemini...');
+        
+        const credentials = JSON.parse(credentialsJson);
+        const projectId = credentials.project_id;
+        const accessToken = await getVertexAccessToken();
+        
+        if (!accessToken) {
+            throw new Error('Could not get access token');
+        }
+        
+        // Select voices based on gender
+        const speaker1 = host1Gender === 'female' 
+            ? GEMINI_TTS_SPEAKERS.female[Math.floor(Math.random() * GEMINI_TTS_SPEAKERS.female.length)]
+            : GEMINI_TTS_SPEAKERS.male[Math.floor(Math.random() * GEMINI_TTS_SPEAKERS.male.length)];
+        const speaker2 = host2Gender === 'female'
+            ? GEMINI_TTS_SPEAKERS.female[Math.floor(Math.random() * GEMINI_TTS_SPEAKERS.female.length)]
+            : GEMINI_TTS_SPEAKERS.male[Math.floor(Math.random() * GEMINI_TTS_SPEAKERS.male.length)];
+        
+        // Make sure we pick different voices if both same gender
+        let finalSpeaker2 = speaker2;
+        if (speaker1 === speaker2) {
+            const voiceList = host2Gender === 'female' ? GEMINI_TTS_SPEAKERS.female : GEMINI_TTS_SPEAKERS.male;
+            finalSpeaker2 = voiceList.find(v => v !== speaker1) || speaker2;
+        }
+        
+        console.log(`🎭 Duo voices: ${host1Name}=${speaker1}, ${host2Name}=${finalSpeaker2}`);
+        
+        // Parse the dialogue script and create multi-turn format
+        // Format: "HostName: [emotion] text..." becomes turns with speaker assignment
+        const lines = script.split('\n').filter(line => line.trim());
+        const turns = [];
+        
+        for (const line of lines) {
+            const match = line.match(/^([^:]+):\s*(.+)$/);
+            if (match) {
+                const speakerName = match[1].trim();
+                const text = match[2].trim();
+                
+                // Determine which speaker this is
+                const isHost1 = speakerName.toLowerCase().includes(host1Name.toLowerCase()) || 
+                               speakerName.toLowerCase() === host1Name.toLowerCase().split(' ')[0];
+                const speaker = isHost1 ? speaker1 : finalSpeaker2;
+                
+                turns.push({ speaker, text });
+            }
+        }
+        
+        if (turns.length === 0) {
+            // If parsing failed, just use the whole script with first speaker
+            console.log('⚠️ Could not parse duo script, using single speaker');
+            return generateTTSAudio(script, { gender: host1Gender });
+        }
+        
+        console.log(`📝 Parsed ${turns.length} dialogue turns`);
+        
+        // Combine all turns with speaker tags for Gemini
+        // Using the multi-speaker format: "<speaker:Name>text"
+        const combinedScript = turns.map(t => `<speaker:${t.speaker}>${t.text}`).join('\n');
+        
+        // Use Vertex AI endpoint with multi-speaker config
+        const response = await fetch(
+            `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.5-flash-preview-tts:generateContent`,
+            {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    contents: [{
+                        role: 'user',
+                        parts: [{ text: combinedScript }]
+                    }],
+                    generationConfig: {
+                        responseModalities: ['AUDIO'],
+                        speechConfig: {
+                            multiSpeakerVoiceConfig: {
+                                speakerVoiceConfigs: [
+                                    {
+                                        speaker: speaker1,
+                                        voiceConfig: {
+                                            prebuiltVoiceConfig: { voiceName: speaker1 }
+                                        }
+                                    },
+                                    {
+                                        speaker: finalSpeaker2,
+                                        voiceConfig: {
+                                            prebuiltVoiceConfig: { voiceName: finalSpeaker2 }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                })
+            }
+        );
+
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error('❌ Duo TTS Vertex error:', errText);
+            // Fallback to single-speaker
+            console.log('⚠️ Falling back to single-speaker TTS');
+            return generateTTSAudio(script, { gender: host1Gender });
+        }
+
+        const data = await response.json();
+        const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        
+        if (!audioData) {
+            console.log('⚠️ No audio data in response, falling back');
+            return generateTTSAudio(script, { gender: host1Gender });
+        }
+        
+        let audioBuffer = Buffer.from(audioData, 'base64');
+        const mimeType = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || 'audio/wav';
+        console.log(`🎵 Duo TTS audio format: ${mimeType}, size: ${audioBuffer.length} bytes`);
+        
+        // Handle PCM conversion if needed
+        if (mimeType.includes('L16') || mimeType.includes('pcm')) {
+            console.log('🔄 Converting duo PCM to WAV...');
+            const rateMatch = mimeType.match(/rate=(\d+)/);
+            const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+            const blockAlign = numChannels * (bitsPerSample / 8);
+            
+            const wavHeader = Buffer.alloc(44);
+            wavHeader.write('RIFF', 0);
+            wavHeader.writeUInt32LE(36 + audioBuffer.length, 4);
+            wavHeader.write('WAVE', 8);
+            wavHeader.write('fmt ', 12);
+            wavHeader.writeUInt32LE(16, 16);
+            wavHeader.writeUInt16LE(1, 20);
+            wavHeader.writeUInt16LE(numChannels, 22);
+            wavHeader.writeUInt32LE(sampleRate, 24);
+            wavHeader.writeUInt32LE(byteRate, 28);
+            wavHeader.writeUInt16LE(blockAlign, 32);
+            wavHeader.writeUInt16LE(bitsPerSample, 34);
+            wavHeader.write('data', 36);
+            wavHeader.writeUInt32LE(audioBuffer.length, 40);
+            
+            audioBuffer = Buffer.concat([wavHeader, audioBuffer]);
+            console.log(`✅ Converted duo to WAV: ${audioBuffer.length} bytes`);
+        }
+        
+        // Upload to GCS
+        const { Storage } = require('@google-cloud/storage');
+        const storage = new Storage({ credentials });
+        const bucket = storage.bucket(process.env.GCS_BUCKET_NAME || 'productiongk');
+        const crypto = require('crypto');
+        const hash = crypto.createHash('md5').update(script).digest('hex');
+        const extension = mimeType.includes('mp3') ? 'mp3' : 'wav';
+        const filename = `radio/tts/duo_hostbreak_${hash}.${extension}`;
+        
+        const blob = bucket.file(filename);
+        await new Promise((resolve, reject) => {
+            const stream = blob.createWriteStream({ 
+                metadata: { contentType: extension === 'mp3' ? 'audio/mpeg' : 'audio/wav' } 
+            });
+            stream.on('error', reject);
+            stream.on('finish', resolve);
+            stream.end(audioBuffer);
+        });
+        
+        const audioUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+        console.log(`✅ Duo TTS saved: ${audioUrl}`);
+        return audioUrl;
+        
+    } catch (err) {
+        console.error('❌ Duo TTS error:', err.message);
+        // Fallback to single-speaker
+        return generateTTSAudio(script, { gender: host1Gender });
+    }
+};
+
 // ===========================
 // STATION ROUTES
 // ===========================
@@ -425,13 +758,23 @@ router.get('/station', async (req, res) => {
 // PUT /api/radio/station - Update station config
 router.put('/station', async (req, res) => {
     try {
-        const { name, tagline, hosts, playlists, hostBreakDuration, hostBreakFrequency, settings, coverImageUrl, isLive } = req.body;
+        const { 
+            name, tagline, hosts, playlists, 
+            hostBreakDuration, hostBreakFrequency, 
+            devotionalFrequency, devotionalDuration, enableDuoDiscussions,
+            customIntroScript,
+            settings, coverImageUrl, isLive 
+        } = req.body;
         
         let station = await RadioStation.findOne();
         
         if (!station) {
             station = new RadioStation();
         }
+        
+        // Check if custom intro changed - clear cache if so
+        const introChanged = customIntroScript !== undefined && 
+            customIntroScript !== station.customIntroScript;
         
         // Update fields
         if (name !== undefined) station.name = name;
@@ -440,9 +783,19 @@ router.put('/station', async (req, res) => {
         if (playlists !== undefined) station.playlists = playlists;
         if (hostBreakDuration !== undefined) station.hostBreakDuration = hostBreakDuration;
         if (hostBreakFrequency !== undefined) station.hostBreakFrequency = hostBreakFrequency;
+        if (devotionalFrequency !== undefined) station.devotionalFrequency = devotionalFrequency;
+        if (devotionalDuration !== undefined) station.devotionalDuration = devotionalDuration;
+        if (enableDuoDiscussions !== undefined) station.enableDuoDiscussions = enableDuoDiscussions;
+        if (customIntroScript !== undefined) station.customIntroScript = customIntroScript;
         if (settings !== undefined) station.settings = { ...station.settings, ...settings };
         if (coverImageUrl !== undefined) station.coverImageUrl = coverImageUrl;
         if (isLive !== undefined) station.isLive = isLive;
+        
+        // Clear cached intro if the custom intro was changed
+        if (introChanged) {
+            station.cachedIntro = undefined;
+            console.log('🔄 Custom intro changed, clearing cached intro');
+        }
         
         await station.save();
         
@@ -1121,19 +1474,22 @@ router.post('/host-break/generate', async (req, res) => {
             nextSongArtist,
             previousSongTitle,
             previousSongArtist,
-            targetDuration = 20,
+            targetDuration = 10,
             contentType = 'song',
             contentDescription = '',
             forceRegenerate = false,
+            isDuo = false,
         } = req.body;
 
         if (!nextSongTitle) {
             return res.status(400).json({ message: 'nextSongTitle is required' });
         }
 
+        // Get station config
+        const station = await RadioStation.findOne({});
+        
         // Check for cached station intro
         if (contentType === 'station_intro' && !forceRegenerate) {
-            const station = await RadioStation.findOne({});
             if (station?.cachedIntro?.audioUrl) {
                 console.log(`📻 Using cached station intro`);
                 return res.json({
@@ -1150,50 +1506,121 @@ router.post('/host-break/generate', async (req, res) => {
             }
         }
 
-        // Get a random host if not specified
-        let host;
-        if (hostId) {
-            host = await RadioHost.findById(hostId);
-        } else {
-            const hosts = await RadioHost.find({ enabled: true });
-            if (hosts.length > 0) {
-                host = hosts[Math.floor(Math.random() * hosts.length)];
-            }
-        }
-
-        if (!host) {
+        // Get hosts for the break
+        const allHosts = await RadioHost.find({ enabled: true });
+        if (allHosts.length === 0) {
             return res.status(400).json({ message: 'No hosts available' });
         }
 
-        console.log(`📻 Generating host break for "${nextSongTitle}" with ${host.name}`);
+        // Station intro ALWAYS uses duo mode if two hosts available
+        const useDuo = contentType === 'station_intro' 
+            ? allHosts.length >= 2  // Force duo for intro
+            : (isDuo && allHosts.length >= 2);  // Otherwise respect isDuo flag
 
-        // Step 1: Generate script using direct function call (no HTTP)
-        const script = await generateRadioScript({
-            hostName: host.name,
-            hostPersonality: host.personality,
-            nextSongTitle,
-            nextSongArtist,
-            previousSongTitle,
-            previousSongArtist,
-            targetDuration,
-            contentType,
-            contentDescription,
-        });
-        
-        if (!script) {
-            throw new Error('Failed to generate script');
+        // For duo mode, get two hosts; for single, get one
+        let host, secondHost;
+        if (useDuo) {
+            // Shuffle and pick two different hosts
+            const shuffled = allHosts.sort(() => Math.random() - 0.5);
+            host = shuffled[0];
+            secondHost = shuffled[1];
+            console.log(`📻 Generating DUO host break for "${nextSongTitle}" with ${host.name} & ${secondHost.name}`);
+        } else {
+            if (hostId) {
+                host = await RadioHost.findById(hostId);
+            } else {
+                host = allHosts[Math.floor(Math.random() * allHosts.length)];
+            }
+            console.log(`📻 Generating host break for "${nextSongTitle}" with ${host.name}`);
         }
         
-        console.log(`📝 Script: "${script.substring(0, 60)}..."`);
+        // Check for custom intro script
+        const hasCustomIntro = contentType === 'station_intro' && station?.customIntroScript?.trim();
 
-        // Step 2: Generate TTS audio using direct function call (no HTTP)
-        const audioUrl = await generateTTSAudio(script, {
-            name: host.googleVoice?.name || 'en-US-Chirp3-HD-Enceladus',
-            languageCode: host.googleVoice?.languageCode || 'en-US',
-            pitch: host.googleVoice?.pitch || 0,
-            speakingRate: host.googleVoice?.speakingRate || 1.0,
-            gender: host.gender || 'male', // Pass host gender for Gemini voice selection
-        });
+        let script, audioUrl;
+
+        if (hasCustomIntro) {
+            // Use custom intro script
+            script = station.customIntroScript.trim();
+            console.log(`📝 Using custom intro script`);
+            
+            // Generate TTS for custom script (use duo if it looks like dialogue)
+            const looksLikeDuo = script.includes(':') && (script.includes(host.name) || script.includes(secondHost?.name));
+            
+            if (looksLikeDuo && secondHost) {
+                audioUrl = await generateDuoTTSAudio(script, {
+                    host1Gender: host.gender || 'male',
+                    host2Gender: secondHost.gender || 'female',
+                    host1Name: host.name,
+                    host2Name: secondHost.name,
+                });
+            } else {
+                audioUrl = await generateTTSAudio(script, {
+                    name: host.googleVoice?.name || 'en-US-Chirp3-HD-Enceladus',
+                    languageCode: host.googleVoice?.languageCode || 'en-US',
+                    pitch: host.googleVoice?.pitch || 0,
+                    speakingRate: host.googleVoice?.speakingRate || 1.0,
+                    gender: host.gender || 'male',
+                });
+            }
+        } else if (useDuo && secondHost) {
+            // Generate duo script with back-and-forth dialogue
+            script = await generateDuoRadioScript({
+                host1Name: host.name,
+                host1Personality: host.personality,
+                host2Name: secondHost.name,
+                host2Personality: secondHost.personality,
+                nextSongTitle,
+                nextSongArtist,
+                previousSongTitle,
+                previousSongArtist,
+                targetDuration,
+                contentType,
+                contentDescription,
+            });
+            
+            if (!script) {
+                throw new Error('Failed to generate duo script');
+            }
+            
+            console.log(`📝 Duo Script: "${script.substring(0, 80)}..."`);
+
+            // Generate multi-speaker TTS audio
+            audioUrl = await generateDuoTTSAudio(script, {
+                host1Gender: host.gender || 'male',
+                host2Gender: secondHost.gender || 'female',
+                host1Name: host.name,
+                host2Name: secondHost.name,
+            });
+        } else {
+            // Single host mode (original flow)
+            script = await generateRadioScript({
+                hostName: host.name,
+                hostPersonality: host.personality,
+                nextSongTitle,
+                nextSongArtist,
+                previousSongTitle,
+                previousSongArtist,
+                targetDuration,
+                contentType,
+                contentDescription,
+            });
+            
+            if (!script) {
+                throw new Error('Failed to generate script');
+            }
+            
+            console.log(`📝 Script: "${script.substring(0, 60)}..."`);
+
+            // Generate single-speaker TTS audio
+            audioUrl = await generateTTSAudio(script, {
+                name: host.googleVoice?.name || 'en-US-Chirp3-HD-Enceladus',
+                languageCode: host.googleVoice?.languageCode || 'en-US',
+                pitch: host.googleVoice?.pitch || 0,
+                speakingRate: host.googleVoice?.speakingRate || 1.0,
+                gender: host.gender || 'male',
+            });
+        }
 
         // Calculate estimated duration
         const wordCount = script.split(/\s+/).length;

@@ -21,19 +21,38 @@ const radioStationSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Playlist',
     }],
-    // Duration of host breaks in seconds
+    // Duration of regular host breaks in seconds
     hostBreakDuration: {
         type: Number,
-        default: 30,
-        min: 10,
-        max: 120,
+        default: 10, // Short, quick breaks
+        min: 5,
+        max: 30,
     },
-    // How often host breaks occur (every N songs)
+    // How often regular host breaks occur (every N songs)
     hostBreakFrequency: {
         type: Number,
         default: 3, // After every 3 songs
         min: 1,
         max: 10,
+    },
+    // How often devotional segments occur (every N songs)
+    devotionalFrequency: {
+        type: Number,
+        default: 10, // Every 10 songs
+        min: 5,
+        max: 20,
+    },
+    // Duration of devotional segments in seconds
+    devotionalDuration: {
+        type: Number,
+        default: 60, // 1 minute devotional
+        min: 30,
+        max: 180,
+    },
+    // Whether to use both hosts for duo discussions
+    enableDuoDiscussions: {
+        type: Boolean,
+        default: true,
     },
     // Station settings
     settings: {
@@ -66,6 +85,11 @@ const radioStationSchema = new mongoose.Schema({
     // Station cover image
     coverImageUrl: {
         type: String,
+    },
+    // Custom station intro script (user can write their own)
+    customIntroScript: {
+        type: String,
+        default: '',
     },
     // Cached station intro (so it doesn't regenerate every time)
     cachedIntro: {
