@@ -228,6 +228,7 @@ const generateTTSAudio = async (text, voiceConfig) => {
                     },
                     body: JSON.stringify({
                         contents: [{
+                            role: 'user',
                             parts: [{ text: text }]
                         }],
                         generationConfig: {
