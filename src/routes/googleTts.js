@@ -113,16 +113,94 @@ const saveAudioFile = async (buffer, filename) => {
     }
 };
 
-// GET /api/google-tts/voices - List available voices
-router.get('/voices', (req, res) => {
+// GET /api/google-tts/voices - List available voices from Google Cloud TTS API
+router.get('/voices', async (req, res) => {
     try {
+        const client = getTTSClient();
+        
+        if (!client) {
+            // Fallback to hardcoded list if no client
+            console.log('⚠️ No TTS client, returning hardcoded voices');
+            return res.json({
+                voices: AVAILABLE_VOICES,
+                total: AVAILABLE_VOICES.length,
+                source: 'hardcoded'
+            });
+        }
+
+        // Fetch all voices from Google Cloud TTS API
+        console.log('🎙️ Fetching voices from Google Cloud TTS API...');
+        const [response] = await client.listVoices({ languageCode: 'en-US' });
+        
+        // Filter and format voices - prioritize Chirp 3 HD, then other high-quality voices
+        const formattedVoices = response.voices
+            .filter(v => v.name.startsWith('en-US'))
+            .map(v => {
+                // Determine tier based on voice name
+                let tier = 'standard';
+                let description = v.name;
+                
+                if (v.name.includes('Chirp3-HD')) {
+                    tier = 'chirp3-hd';
+                    // Extract the voice name part (e.g., "Achernar" from "en-US-Chirp3-HD-Achernar")
+                    const namePart = v.name.split('-').pop();
+                    description = `${namePart} - Chirp 3 HD voice`;
+                } else if (v.name.includes('Studio')) {
+                    tier = 'studio';
+                    description = `Studio quality voice`;
+                } else if (v.name.includes('Journey')) {
+                    tier = 'journey';
+                    description = `Storytelling voice`;
+                } else if (v.name.includes('News')) {
+                    tier = 'news';
+                    description = `News/broadcast voice`;
+                } else if (v.name.includes('Neural2')) {
+                    tier = 'neural2';
+                    description = `Neural2 voice`;
+                } else if (v.name.includes('Wavenet')) {
+                    tier = 'wavenet';
+                    description = `WaveNet voice`;
+                } else if (v.name.includes('Polyglot')) {
+                    tier = 'polyglot';
+                    description = `Multilingual voice`;
+                } else if (v.name.includes('Casual')) {
+                    tier = 'casual';
+                    description = `Casual conversational voice`;
+                }
+                
+                return {
+                    name: v.name,
+                    gender: v.ssmlGender || 'NEUTRAL',
+                    description,
+                    languageCode: 'en-US',
+                    tier,
+                    naturalSampleRateHertz: v.naturalSampleRateHertz
+                };
+            })
+            // Sort: Chirp 3 HD first, then by tier, then alphabetically
+            .sort((a, b) => {
+                const tierOrder = { 'chirp3-hd': 0, 'studio': 1, 'journey': 2, 'news': 3, 'neural2': 4, 'polyglot': 5, 'casual': 6, 'wavenet': 7, 'standard': 8 };
+                const tierDiff = (tierOrder[a.tier] || 99) - (tierOrder[b.tier] || 99);
+                if (tierDiff !== 0) return tierDiff;
+                return a.name.localeCompare(b.name);
+            });
+
+        console.log(`✅ Found ${formattedVoices.length} voices (${formattedVoices.filter(v => v.tier === 'chirp3-hd').length} Chirp 3 HD)`);
+        
+        res.json({
+            voices: formattedVoices,
+            total: formattedVoices.length,
+            source: 'google-api'
+        });
+    } catch (error) {
+        console.error('❌ Error fetching voices from Google:', error.message);
+        // Fallback to hardcoded list on error
         res.json({
             voices: AVAILABLE_VOICES,
             total: AVAILABLE_VOICES.length,
+            source: 'hardcoded-fallback',
+            error: error.message
         });
-    } catch (error) {
-        console.error('Error fetching voices:', error);
-        res.status(500).json({ message: 'Failed to fetch voices', error: error.message });
     }
 });
 
