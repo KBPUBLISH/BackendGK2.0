@@ -20,6 +20,7 @@ const radioTrackSchema = new mongoose.Schema({
     },
     coverImage: String,
     duration: Number, // in seconds
+    description: String, // Content description for context-aware hosting
     
     // Radio-specific settings
     category: {

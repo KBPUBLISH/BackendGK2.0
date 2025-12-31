@@ -723,7 +723,7 @@ function getFallbackAudiobookComments() {
 // RADIO SCRIPT GENERATION
 // ===========================
 
-// POST /api/ai-generate/radio-script - Generate a radio host script for introducing a song
+// POST /api/ai-generate/radio-script - Generate a radio host script for introducing content
 router.post('/radio-script', async (req, res) => {
     try {
         const { 
@@ -734,7 +734,11 @@ router.post('/radio-script', async (req, res) => {
             previousSongTitle, 
             previousSongArtist,
             targetDuration = 30, // Target duration in seconds
-            stationName = 'Praise Station Radio'
+            stationName = 'Praise Station Radio',
+            // New fields for content-aware hosting
+            contentType = 'song', // 'song', 'story_intro', 'story_outro', 'devotional'
+            contentDescription = '', // Description/summary of the content
+            contentCategory = 'general' // 'worship', 'story', 'devotional', 'kids', 'general'
         } = req.body;
 
         if (!nextSongTitle) {
@@ -745,7 +749,7 @@ router.post('/radio-script', async (req, res) => {
         if (!geminiKey) {
             console.log('⚠️ No Gemini API key, returning fallback radio script');
             return res.json({
-                script: getFallbackRadioScript(hostName, nextSongTitle, nextSongArtist),
+                script: getFallbackRadioScript(hostName, nextSongTitle, nextSongArtist, contentType),
                 source: 'fallback',
             });
         }
@@ -753,14 +757,47 @@ router.post('/radio-script', async (req, res) => {
         // Calculate target word count (approximately 2.5 words per second for natural speech)
         const targetWordCount = Math.round(targetDuration * 2.5);
 
+        // Build content-specific prompt
+        let taskDescription = '';
+        let contextInfo = contentDescription ? `\nCONTENT DESCRIPTION: ${contentDescription}` : '';
+        
+        if (contentType === 'story_intro') {
+            // Introducing an audiobook/story
+            taskDescription = `YOUR TASK: Write an exciting "story time" introduction. The segment should:
+1. ${previousSongTitle ? `Briefly wrap up the previous content "${previousSongTitle}" (1 sentence max)` : 'Start with excitement about story time'}
+2. Announce that it's STORY TIME with enthusiasm!
+3. Introduce the upcoming story "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
+4. ${contentDescription ? 'Give a brief teaser about what the story is about (without spoilers!)' : 'Build anticipation for the story'}
+5. Invite listeners to get cozy and listen`;
+        } else if (contentType === 'story_outro') {
+            // After an audiobook/story ended
+            taskDescription = `YOUR TASK: Write a warm reflection after the story just ended. The segment should:
+1. Say "I hope you enjoyed that story!" or similar
+2. Reference the story "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
+3. ${contentDescription ? `Share a brief reflection on the story's message or theme based on: "${contentDescription}"` : 'Share a brief uplifting thought about the story'}
+4. Relate the story's lesson to faith or daily life (1 sentence)
+5. Transition smoothly to what's coming next`;
+        } else if (contentType === 'devotional') {
+            // Introducing a devotional
+            taskDescription = `YOUR TASK: Write a reverent introduction for devotional time. The segment should:
+1. ${previousSongTitle ? `Briefly reflect on the previous content` : 'Create a peaceful, reflective atmosphere'}
+2. Introduce the devotional "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
+3. Encourage listeners to open their hearts
+4. ${contentDescription ? `Mention what the devotional is about: "${contentDescription}"` : 'Build anticipation for spiritual growth'}`;
+        } else {
+            // Default: introducing a song
+            taskDescription = `YOUR TASK: Write a short radio host segment that will be spoken aloud. The segment should:
+1. ${previousSongTitle ? `Briefly reflect on the previous song "${previousSongTitle}"${previousSongArtist ? ` by ${previousSongArtist}` : ''} (1 sentence max)` : 'Start with a warm greeting or uplifting thought'}
+2. Share a brief encouraging message, Bible verse reference, or uplifting thought (1-2 sentences)
+3. Naturally introduce the upcoming song "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}`;
+        }
+
         const prompt = `You are ${hostName || 'a friendly radio host'} on "${stationName}", a Christian family radio station.
 
 PERSONALITY: ${hostPersonality || 'Warm, encouraging, and uplifting. You love sharing God\'s love through music and bringing joy to families.'}
+${contextInfo}
 
-YOUR TASK: Write a short radio host segment that will be spoken aloud. The segment should:
-1. ${previousSongTitle ? `Briefly reflect on the previous song "${previousSongTitle}"${previousSongArtist ? ` by ${previousSongArtist}` : ''} (1 sentence max)` : 'Start with a warm greeting or uplifting thought'}
-2. Share a brief encouraging message, Bible verse reference, or uplifting thought (1-2 sentences)
-3. Naturally introduce the upcoming song "${nextSongTitle}"${nextSongArtist ? ` by ${nextSongArtist}` : ''}
+${taskDescription}
 
 REQUIREMENTS:
 - Target length: approximately ${targetWordCount} words (about ${targetDuration} seconds when spoken)
@@ -918,7 +955,38 @@ router.post('/radio-scripts-batch', async (req, res) => {
 });
 
 // Fallback radio script when AI generation fails
-function getFallbackRadioScript(hostName, songTitle, songArtist) {
+function getFallbackRadioScript(hostName, songTitle, songArtist, contentType = 'song') {
+    // Story time intro fallbacks
+    if (contentType === 'story_intro') {
+        const storyIntros = [
+            `It's story time! Get cozy everyone, because we have a wonderful story coming up. Here's "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}.`,
+            `Gather around, friends! It's time for a story. Coming up next: "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}. Enjoy!`,
+            `Story time! I'm so excited to share this one with you. Let's listen to "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}.`,
+        ];
+        return storyIntros[Math.floor(Math.random() * storyIntros.length)];
+    }
+
+    // Story outro fallbacks
+    if (contentType === 'story_outro') {
+        const storyOutros = [
+            `I hope you enjoyed that story! "${songTitle}" is such a wonderful tale. May its message stay with you today.`,
+            `What a beautiful story that was! I hope "${songTitle}" touched your heart as much as it did mine. God bless!`,
+            `And that was "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}. I hope that story blessed your heart today!`,
+        ];
+        return storyOutros[Math.floor(Math.random() * storyOutros.length)];
+    }
+
+    // Devotional fallbacks
+    if (contentType === 'devotional') {
+        const devotionalIntros = [
+            `Let's take a moment to reflect and grow in faith. Here's "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}.`,
+            `Time to open our hearts and minds. Coming up: "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}.`,
+            `Let this devotional speak to your soul. Here's "${songTitle}"${songArtist ? ` by ${songArtist}` : ''}.`,
+        ];
+        return devotionalIntros[Math.floor(Math.random() * devotionalIntros.length)];
+    }
+
+    // Default: song fallbacks
     const greetings = [
         "Welcome back to Praise Station Radio!",
         "You're listening to Praise Station Radio!",

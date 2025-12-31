@@ -731,7 +731,11 @@ router.post('/host-break/generate', async (req, res) => {
             nextSongArtist,
             previousSongTitle,
             previousSongArtist,
-            targetDuration = 20 // Shorter default for on-demand
+            targetDuration = 20, // Shorter default for on-demand
+            // New: content-aware hosting
+            contentType = 'song', // 'song', 'story_intro', 'story_outro', 'devotional'
+            contentDescription = '', // Description for context
+            contentCategory = 'general' // 'worship', 'story', 'devotional', 'kids', 'general'
         } = req.body;
 
         if (!nextSongTitle) {
@@ -766,7 +770,10 @@ router.post('/host-break/generate', async (req, res) => {
                     nextSongArtist,
                     previousSongTitle,
                     previousSongArtist,
-                    targetDuration
+                    targetDuration,
+                    contentType,
+                    contentDescription,
+                    contentCategory
                 })
             }
         );
