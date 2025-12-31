@@ -579,24 +579,41 @@ const generateDuoTTSAudio = async (script, options) => {
         console.log(`🎭 Duo voices: ${host1Name}=${speaker1}, ${host2Name}=${finalSpeaker2}`);
         
         // Parse the dialogue script and create multi-turn format
+        // Handle both multi-line and single-line formats
         // Format: "HostName: [emotion] text..." becomes turns with speaker assignment
-        const lines = script.split('\n').filter(line => line.trim());
-        const turns = [];
         
-        for (const line of lines) {
-            const match = line.match(/^([^:]+):\s*(.+)$/);
-            if (match) {
-                const speakerName = match[1].trim();
-                const text = match[2].trim();
-                
-                // Determine which speaker this is
-                const isHost1 = speakerName.toLowerCase().includes(host1Name.toLowerCase()) || 
-                               speakerName.toLowerCase() === host1Name.toLowerCase().split(' ')[0];
-                const speaker = isHost1 ? speaker1 : finalSpeaker2;
-                
-                turns.push({ speaker, text });
+        // First, split on speaker names to handle single-line dialogues
+        // Pattern: looks for "Name:" at start of line OR after space/period
+        const host1First = host1Name.split(' ')[0]; // First name only
+        const host2First = host2Name.split(' ')[0];
+        
+        // Split the script by speaker indicators
+        const speakerPattern = new RegExp(`(${host1Name}|${host2Name}|${host1First}|${host2First}):\\s*`, 'gi');
+        const parts = script.split(speakerPattern).filter(p => p.trim());
+        
+        const turns = [];
+        let currentSpeaker = null;
+        
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i].trim();
+            
+            // Check if this part is a speaker name
+            const isHost1Name = part.toLowerCase() === host1Name.toLowerCase() || 
+                               part.toLowerCase() === host1First.toLowerCase();
+            const isHost2Name = part.toLowerCase() === host2Name.toLowerCase() || 
+                               part.toLowerCase() === host2First.toLowerCase();
+            
+            if (isHost1Name) {
+                currentSpeaker = speaker1;
+            } else if (isHost2Name) {
+                currentSpeaker = finalSpeaker2;
+            } else if (currentSpeaker && part.length > 0) {
+                // This is dialogue text for the current speaker
+                turns.push({ speaker: currentSpeaker, text: part });
             }
         }
+        
+        console.log(`📝 Parsed ${turns.length} dialogue turns from script`);
         
         if (turns.length === 0) {
             // If parsing failed, just use the whole script with first speaker
@@ -872,7 +889,7 @@ router.post('/hosts', async (req, res) => {
 // PUT /api/radio/hosts/:id - Update host
 router.put('/hosts/:id', async (req, res) => {
     try {
-        const { name, personality, googleVoice, samplePhrases, avatarUrl, enabled, order } = req.body;
+        const { name, personality, googleVoice, samplePhrases, avatarUrl, gender, enabled, order } = req.body;
         
         const host = await RadioHost.findById(req.params.id);
         if (!host) {
@@ -884,12 +901,13 @@ router.put('/hosts/:id', async (req, res) => {
         if (googleVoice !== undefined) host.googleVoice = googleVoice;
         if (samplePhrases !== undefined) host.samplePhrases = samplePhrases;
         if (avatarUrl !== undefined) host.avatarUrl = avatarUrl;
+        if (gender !== undefined) host.gender = gender;
         if (enabled !== undefined) host.enabled = enabled;
         if (order !== undefined) host.order = order;
         
         await host.save();
         
-        console.log(`📻 Updated radio host: ${host.name}`);
+        console.log(`📻 Updated radio host: ${host.name} (gender: ${host.gender})`);
         res.json(host);
     } catch (error) {
         console.error('Error updating host:', error);
