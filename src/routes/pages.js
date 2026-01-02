@@ -40,6 +40,7 @@ router.post('/', async (req, res) => {
         scrollMidHeight: req.body.scrollMidHeight,
         scrollMaxHeight: req.body.scrollMaxHeight,
         scrollOffsetY: req.body.scrollOffsetY || 0,
+        scrollWidth: req.body.scrollWidth || 100,
         soundEffectUrl: req.body.soundEffectUrl,
         backgroundAudioUrl: req.body.backgroundAudioUrl, // Auto-extracted from video for iOS audio layering
         textBoxes: req.body.textBoxes,
