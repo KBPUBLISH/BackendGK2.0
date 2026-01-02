@@ -148,6 +148,7 @@ const pageSchema = new mongoose.Schema({
     scrollMidHeight: { type: Number }, // Mid scroll height % (app uses this)
     scrollMaxHeight: { type: Number }, // Max scroll height %
     scrollOffsetY: { type: Number, default: 0 }, // Vertical offset from bottom in percentage (positive = higher)
+    scrollOffsetX: { type: Number, default: 0 }, // Horizontal offset from center in percentage (positive = right)
     scrollWidth: { type: Number, default: 100 }, // Width of scroll as percentage (100 = full width)
     soundEffectUrl: { type: String }, // URL for sound effect bubble audio
     // Background audio - extracted from video or separate ambient audio that loops with the page
