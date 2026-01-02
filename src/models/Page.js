@@ -56,7 +56,7 @@ const pageSchema = new mongoose.Schema({
             width: { type: Number, default: 30 }, // percentage (0-100)
             height: { type: Number }, // percentage (0-100) - optional, auto if not set
             alignment: { type: String, enum: ['left', 'center', 'right'], default: 'left' },
-            fontFamily: { type: String, default: 'Comic Sans MS' },
+            fontFamily: { type: String, default: 'Patrick Hand' }, // Google Font - works on iOS
             fontSize: { type: Number, default: 24 },
             color: { type: String, default: '#4a3b2a' },
         }],
@@ -162,7 +162,7 @@ const pageSchema = new mongoose.Schema({
         width: { type: Number, default: 30 },
         height: { type: Number }, // percentage (0-100) - optional, auto if not set
         alignment: { type: String, enum: ['left', 'center', 'right'], default: 'left' },
-        fontFamily: { type: String, default: 'Comic Sans MS' },
+        fontFamily: { type: String, default: 'Patrick Hand' }, // Google Font - works on iOS
         fontSize: { type: Number, default: 24 },
         color: { type: String, default: '#4a3b2a' },
     }],
