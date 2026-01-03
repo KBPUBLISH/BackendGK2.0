@@ -59,6 +59,8 @@ const pageSchema = new mongoose.Schema({
             fontFamily: { type: String, default: 'Patrick Hand' }, // Google Font - works on iOS
             fontSize: { type: Number, default: 24 },
             color: { type: String, default: '#4a3b2a' },
+            showBackground: { type: Boolean, default: false }, // Show semi-transparent background behind text
+            backgroundColor: { type: String, default: 'rgba(255,255,255,0.85)' }, // Background color when showBackground is true
         }],
     },
 
