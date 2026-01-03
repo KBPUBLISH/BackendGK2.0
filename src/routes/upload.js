@@ -45,6 +45,89 @@ const extractGcsPathFromUrl = (url) => {
     return null;
 };
 
+// Compress video using FFmpeg
+// Returns a Promise that resolves to the compressed video buffer
+const compressVideo = (videoBuffer, originalFilename, options = {}) => {
+    return new Promise((resolve, reject) => {
+        const tempDir = os.tmpdir();
+        const tempInputPath = path.join(tempDir, `temp_input_${Date.now()}${path.extname(originalFilename)}`);
+        const tempOutputPath = path.join(tempDir, `temp_compressed_${Date.now()}.mp4`);
+        
+        // Write video buffer to temp file
+        fs.writeFileSync(tempInputPath, videoBuffer);
+        
+        const originalSize = videoBuffer.length;
+        console.log(`🎬 Compressing video: ${originalFilename} (${(originalSize / 1024 / 1024).toFixed(2)} MB)`);
+        
+        // Compression settings - balanced quality vs size
+        const {
+            maxWidth = 1280,        // Max width (1280p)
+            videoBitrate = '1500k', // Target video bitrate (1.5 Mbps)
+            audioBitrate = '128k',  // Audio bitrate
+            crf = 28,               // Constant Rate Factor (18-28 is good, higher = smaller)
+        } = options;
+        
+        ffmpeg(tempInputPath)
+            .videoCodec('libx264')
+            .audioCodec('aac')
+            .outputOptions([
+                `-crf ${crf}`,
+                '-preset fast',           // Encoding speed (faster = larger file, slower = smaller)
+                `-maxrate ${videoBitrate}`,
+                `-bufsize ${parseInt(videoBitrate) * 2}k`,
+                `-vf scale='min(${maxWidth},iw)':-2`, // Scale down if larger than maxWidth, keep aspect ratio
+                '-movflags +faststart',   // Enable fast start for web streaming
+                '-pix_fmt yuv420p',       // Ensure compatibility
+            ])
+            .audioBitrate(audioBitrate)
+            .format('mp4')
+            .on('start', (cmd) => {
+                console.log('🎬 FFmpeg compress command:', cmd);
+            })
+            .on('progress', (progress) => {
+                if (progress.percent) {
+                    console.log(`🎬 Compression progress: ${Math.round(progress.percent)}%`);
+                }
+            })
+            .on('end', () => {
+                try {
+                    const compressedBuffer = fs.readFileSync(tempOutputPath);
+                    const compressedSize = compressedBuffer.length;
+                    const savings = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
+                    
+                    console.log(`🎬 Compression complete: ${(compressedSize / 1024 / 1024).toFixed(2)} MB (saved ${savings}%)`);
+                    
+                    // Cleanup temp files
+                    fs.unlinkSync(tempInputPath);
+                    fs.unlinkSync(tempOutputPath);
+                    
+                    resolve({
+                        buffer: compressedBuffer,
+                        originalSize,
+                        compressedSize,
+                        savings: parseFloat(savings)
+                    });
+                } catch (err) {
+                    console.error('🎬 Error reading compressed video:', err);
+                    // Cleanup
+                    try { fs.unlinkSync(tempInputPath); } catch (e) {}
+                    try { fs.unlinkSync(tempOutputPath); } catch (e) {}
+                    // Return original if compression fails
+                    resolve({ buffer: videoBuffer, originalSize, compressedSize: originalSize, savings: 0 });
+                }
+            })
+            .on('error', (err) => {
+                console.error('🎬 FFmpeg compression error:', err.message);
+                // Cleanup
+                try { fs.unlinkSync(tempInputPath); } catch (e) {}
+                try { fs.unlinkSync(tempOutputPath); } catch (e) {}
+                // Return original if compression fails
+                resolve({ buffer: videoBuffer, originalSize, compressedSize: originalSize, savings: 0 });
+            })
+            .save(tempOutputPath);
+    });
+};
+
 // Extract audio from video buffer using FFmpeg
 // Returns a Promise that resolves to the audio buffer or null if extraction fails
 const extractAudioFromVideo = (videoBuffer, originalFilename) => {
@@ -463,6 +546,35 @@ router.post('/video', (req, res, next) => {
         console.log('Final file path:', filePath);
         console.log('GCS configured:', !!(bucket && process.env.GCS_BUCKET_NAME));
 
+        // Determine if we should compress this video
+        // Compress sequence videos and page background videos (not lesson videos which may need full quality)
+        const shouldCompress = type === 'sequence' || type === 'pages' || type === 'video';
+        let videoBuffer = req.file.buffer;
+        let compressionInfo = null;
+        
+        if (shouldCompress && videoBuffer.length > 1024 * 1024) { // Only compress if > 1MB
+            console.log('🎬 Auto-compressing video before upload...');
+            try {
+                const result = await compressVideo(videoBuffer, req.file.originalname, {
+                    maxWidth: 1280,      // Max 720p for sequences
+                    videoBitrate: '1500k', // 1.5 Mbps
+                    crf: 28,              // Good quality/size balance
+                });
+                videoBuffer = result.buffer;
+                compressionInfo = {
+                    originalSize: result.originalSize,
+                    compressedSize: result.compressedSize,
+                    savings: result.savings
+                };
+                // Update file path to always be .mp4 after compression
+                if (!filePath.toLowerCase().endsWith('.mp4')) {
+                    filePath = filePath.replace(/\.[^.]+$/, '.mp4');
+                }
+            } catch (compressErr) {
+                console.warn('🎬 Video compression failed, uploading original:', compressErr.message);
+            }
+        }
+
         // Check if GCS is configured
         if (bucket && process.env.GCS_BUCKET_NAME) {
             console.log('Uploading video to GCS:', filePath);
@@ -472,7 +584,7 @@ router.post('/video', (req, res, next) => {
             
             const blobStream = blob.createWriteStream({
                 metadata: {
-                    contentType: req.file.mimetype,
+                    contentType: 'video/mp4', // Always mp4 after compression
                 },
             });
 
@@ -485,11 +597,11 @@ router.post('/video', (req, res, next) => {
                 console.error('GCS Upload error:', error);
                 console.error('Error details:', error.message, error.stack);
                 // Fallback to local storage on GCS error
-                saveFileLocally(req.file, filePath, req)
+                saveFileLocally({ ...req.file, buffer: videoBuffer }, filePath, req)
                     .then(url => {
                         console.log('Saved to local storage as fallback:', url);
                         if (!responded) {
-                            res.status(200).json({ url, path: filePath });
+                            res.status(200).json({ url, path: filePath, compression: compressionInfo });
                         }
                     })
                     .catch(err => {
@@ -517,7 +629,7 @@ router.post('/video', (req, res, next) => {
                 if (shouldExtractAudio) {
                     console.log('🎬 Auto-extracting audio from page background video...');
                     try {
-                        const audioBuffer = await extractAudioFromVideo(req.file.buffer, req.file.originalname);
+                        const audioBuffer = await extractAudioFromVideo(videoBuffer, req.file.originalname);
                         if (audioBuffer && audioBuffer.length > 1000) { // Only if audio is substantial (> 1KB)
                             // Generate audio file path
                             const audioFilename = path.basename(filePath, path.extname(filePath)) + '.mp3';
@@ -534,24 +646,25 @@ router.post('/video', (req, res, next) => {
                     }
                 }
                 
-                // Return response with both URLs
+                // Return response with both URLs and compression info
                 res.status(200).json({ 
                     url: publicUrl, 
                     path: filePath,
-                    backgroundAudioUrl // Will be null if not extracted or extraction failed
+                    backgroundAudioUrl, // Will be null if not extracted or extraction failed
+                    compression: compressionInfo // Will be null if not compressed
                 });
             });
 
             try {
-                blobStream.end(req.file.buffer);
+                blobStream.end(videoBuffer); // Use compressed buffer
             } catch (streamError) {
                 if (!responded) {
                     responded = true;
                     console.error('Error writing to GCS stream:', streamError);
                     // Fallback to local storage
-                    saveFileLocally(req.file, filePath, req)
+                    saveFileLocally({ ...req.file, buffer: videoBuffer }, filePath, req)
                         .then(url => {
-                            res.status(200).json({ url, path: filePath });
+                            res.status(200).json({ url, path: filePath, compression: compressionInfo });
                         })
                         .catch(err => {
                             res.status(500).json({ message: 'Upload failed', error: err.message });
@@ -562,9 +675,9 @@ router.post('/video', (req, res, next) => {
             // Use local storage
             console.log('GCS not configured, using local storage. Bucket:', !!bucket, 'BucketName:', process.env.GCS_BUCKET_NAME);
             try {
-                const url = await saveFileLocally(req.file, filePath, req);
+                const url = await saveFileLocally({ ...req.file, buffer: videoBuffer }, filePath, req);
                 console.log('Video saved to local storage:', url);
-                res.status(200).json({ url, path: filePath });
+                res.status(200).json({ url, path: filePath, compression: compressionInfo });
             } catch (localError) {
                 console.error('Local storage error:', localError);
                 throw localError;
