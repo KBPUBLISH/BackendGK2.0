@@ -61,6 +61,7 @@ const pageSchema = new mongoose.Schema({
             color: { type: String, default: '#4a3b2a' },
             showBackground: { type: Boolean, default: false }, // Show semi-transparent background behind text
             backgroundColor: { type: String, default: 'rgba(255,255,255,0.85)' }, // Background color when showBackground is true
+            shadowColor: { type: String, default: 'white' }, // Text shadow color: 'white', 'black', or custom
         }],
     },
 
