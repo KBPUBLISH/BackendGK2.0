@@ -88,6 +88,20 @@ router.put('/:id', async (req, res) => {
             delete req.body.textBoxes;
         }
 
+        // Explicitly handle scroll properties to ensure they're saved as numbers
+        if (typeof req.body.scrollWidth === 'number') {
+            page.scrollWidth = req.body.scrollWidth;
+        }
+        if (typeof req.body.scrollOffsetX === 'number') {
+            page.scrollOffsetX = req.body.scrollOffsetX;
+        }
+        if (typeof req.body.scrollOffsetY === 'number') {
+            page.scrollOffsetY = req.body.scrollOffsetY;
+        }
+        if (typeof req.body.scrollHeight === 'number') {
+            page.scrollHeight = req.body.scrollHeight;
+        }
+
         Object.assign(page, req.body);
         const updatedPage = await page.save();
         res.json(updatedPage);
