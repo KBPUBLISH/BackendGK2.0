@@ -123,4 +123,41 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// POST reorder pages for a book
+// Body: { bookId, pageOrder: [{ pageId: string, newPageNumber: number }] }
+router.post('/reorder', async (req, res) => {
+    try {
+        const { bookId, pageOrder } = req.body;
+        
+        if (!bookId || !pageOrder || !Array.isArray(pageOrder)) {
+            return res.status(400).json({ message: 'bookId and pageOrder array are required' });
+        }
+        
+        console.log(`📄 Reordering ${pageOrder.length} pages for book ${bookId}`);
+        
+        // Update each page's pageNumber in a transaction-like manner
+        const bulkOps = pageOrder.map(({ pageId, newPageNumber }) => ({
+            updateOne: {
+                filter: { _id: pageId, bookId },
+                update: { $set: { pageNumber: newPageNumber } }
+            }
+        }));
+        
+        if (bulkOps.length > 0) {
+            await Page.bulkWrite(bulkOps);
+        }
+        
+        // Return the updated pages sorted by new page number
+        const updatedPages = await Page.find({ bookId })
+            .populate('webView.gameId', 'url name coverImage gameType')
+            .sort({ pageNumber: 1 });
+            
+        console.log(`✅ Pages reordered successfully`);
+        res.json(updatedPages);
+    } catch (error) {
+        console.error('❌ Error reordering pages:', error.message);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;
