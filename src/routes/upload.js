@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const { execSync } = require('child_process');
 const { bucket } = require('../config/storage');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
@@ -12,9 +13,23 @@ const axios = require('axios');
 const Book = require('../models/Book');
 
 // Configure ffmpeg binary (bundled via @ffmpeg-installer/ffmpeg)
+let ffmpegAvailable = false;
 try {
     if (ffmpegInstaller?.path) {
         ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+        console.log('✅ FFmpeg path set to:', ffmpegInstaller.path);
+        ffmpegAvailable = true;
+        
+        // Test that ffmpeg is actually executable
+        try {
+            execSync(`"${ffmpegInstaller.path}" -version`, { stdio: 'pipe' });
+            console.log('✅ FFmpeg is executable and working');
+        } catch (testErr) {
+            console.error('❌ FFmpeg binary exists but is not executable:', testErr.message);
+            ffmpegAvailable = false;
+        }
+    } else {
+        console.warn('⚠️ FFmpeg installer path is not available');
     }
 } catch (e) {
     console.warn('⚠️ ffmpeg binary not configured:', e);
@@ -49,12 +64,28 @@ const extractGcsPathFromUrl = (url) => {
 // Returns a Promise that resolves to the compressed video buffer
 const compressVideo = (videoBuffer, originalFilename, options = {}) => {
     return new Promise((resolve, reject) => {
+        // Check if ffmpeg is available
+        if (!ffmpegAvailable) {
+            console.error('❌ FFmpeg not available, skipping compression');
+            resolve({ buffer: videoBuffer, originalSize: videoBuffer.length, compressedSize: videoBuffer.length, savings: 0 });
+            return;
+        }
+        
         const tempDir = os.tmpdir();
         const tempInputPath = path.join(tempDir, `temp_input_${Date.now()}${path.extname(originalFilename)}`);
         const tempOutputPath = path.join(tempDir, `temp_compressed_${Date.now()}.mp4`);
         
+        console.log('🎬 FFmpeg temp paths:', { tempInputPath, tempOutputPath });
+        
         // Write video buffer to temp file
-        fs.writeFileSync(tempInputPath, videoBuffer);
+        try {
+            fs.writeFileSync(tempInputPath, videoBuffer);
+            console.log('🎬 Temp input file written successfully');
+        } catch (writeErr) {
+            console.error('❌ Failed to write temp input file:', writeErr.message);
+            resolve({ buffer: videoBuffer, originalSize: videoBuffer.length, compressedSize: videoBuffer.length, savings: 0 });
+            return;
+        }
         
         const originalSize = videoBuffer.length;
         console.log(`🎬 Compressing video: ${originalFilename} (${(originalSize / 1024 / 1024).toFixed(2)} MB)`);
@@ -116,12 +147,15 @@ const compressVideo = (videoBuffer, originalFilename, options = {}) => {
                     resolve({ buffer: videoBuffer, originalSize, compressedSize: originalSize, savings: 0 });
                 }
             })
-            .on('error', (err) => {
-                console.error('🎬 FFmpeg compression error:', err.message);
+            .on('error', (err, stdout, stderr) => {
+                console.error('❌ FFmpeg compression error:', err.message);
+                if (stdout) console.error('FFmpeg stdout:', stdout);
+                if (stderr) console.error('FFmpeg stderr:', stderr);
                 // Cleanup
                 try { fs.unlinkSync(tempInputPath); } catch (e) {}
                 try { fs.unlinkSync(tempOutputPath); } catch (e) {}
                 // Return original if compression fails
+                console.log('🎬 Returning original video due to compression failure');
                 resolve({ buffer: videoBuffer, originalSize, compressedSize: originalSize, savings: 0 });
             })
             .save(tempOutputPath);
@@ -553,25 +587,37 @@ router.post('/video', (req, res, next) => {
         let compressionInfo = null;
         
         if (shouldCompress && videoBuffer.length > 1024 * 1024) { // Only compress if > 1MB
-            console.log('🎬 Auto-compressing video before upload...');
+            console.log(`🎬 Auto-compressing video before upload (type=${type}, size=${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB)...`);
             try {
                 const result = await compressVideo(videoBuffer, req.file.originalname, {
                     maxWidth: 1280,      // Max 720p for sequences
                     videoBitrate: '1500k', // 1.5 Mbps
                     crf: 28,              // Good quality/size balance
                 });
-                videoBuffer = result.buffer;
-                compressionInfo = {
-                    originalSize: result.originalSize,
-                    compressedSize: result.compressedSize,
-                    savings: result.savings
-                };
-                // Update file path to always be .mp4 after compression
-                if (!filePath.toLowerCase().endsWith('.mp4')) {
-                    filePath = filePath.replace(/\.[^.]+$/, '.mp4');
+                
+                if (result.savings > 0) {
+                    console.log(`✅ Video compressed: ${(result.originalSize / 1024 / 1024).toFixed(2)}MB → ${(result.compressedSize / 1024 / 1024).toFixed(2)}MB (saved ${result.savings}%)`);
+                    videoBuffer = result.buffer;
+                    compressionInfo = {
+                        originalSize: result.originalSize,
+                        compressedSize: result.compressedSize,
+                        savings: result.savings
+                    };
+                    // Update file path to always be .mp4 after compression
+                    if (!filePath.toLowerCase().endsWith('.mp4')) {
+                        filePath = filePath.replace(/\.[^.]+$/, '.mp4');
+                    }
+                } else {
+                    console.warn('⚠️ Video compression had no effect (savings: 0%), uploading original');
                 }
             } catch (compressErr) {
                 console.warn('🎬 Video compression failed, uploading original:', compressErr.message);
+            }
+        } else {
+            if (shouldCompress) {
+                console.log(`🎬 Skipping compression: video too small (${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB < 1MB)`);
+            } else {
+                console.log(`🎬 Skipping compression: type=${type} not eligible for compression`);
             }
         }
 

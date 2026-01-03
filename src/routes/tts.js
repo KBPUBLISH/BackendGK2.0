@@ -16,8 +16,16 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // Helper to save buffer to file (Local or GCS)
-const saveAudioFile = async (buffer, filename, bookId = null) => {
-    const filePath = bookId ? `books/${bookId}/audio/${filename}` : `audio/${filename}`;
+const saveAudioFile = async (buffer, filename, bookId = null, pageNumber = null) => {
+    // If pageNumber is provided, organize into page-specific subfolder for clarity
+    let filePath;
+    if (bookId && pageNumber !== null && pageNumber !== undefined) {
+        filePath = `books/${bookId}/audio/page${pageNumber}_${filename}`;
+    } else if (bookId) {
+        filePath = `books/${bookId}/audio/${filename}`;
+    } else {
+        filePath = `audio/${filename}`;
+    }
 
     // Check if GCS is configured
     if (bucket && process.env.GCS_BUCKET_NAME) {
@@ -146,10 +154,15 @@ const processAlignmentToWords = (text, alignment) => {
 // POST /generate - Generate TTS audio
 router.post('/generate', async (req, res) => {
     try {
-        const { text, voiceId, bookId, languageCode } = req.body;
+        const { text, voiceId, bookId, languageCode, pageNumber, textBoxIndex } = req.body;
 
         if (!text || !voiceId) {
             return res.status(400).json({ message: 'Text and voiceId are required' });
+        }
+        
+        // Log page info for debugging
+        if (bookId && pageNumber !== undefined) {
+            console.log(`📄 Generating TTS for book ${bookId}, page ${pageNumber}${textBoxIndex !== undefined ? `, textbox ${textBoxIndex}` : ''}`);
         }
 
         // Include language in cache key for multilingual support
@@ -299,9 +312,17 @@ router.post('/generate', async (req, res) => {
             }
         }
 
-        // 3. Save Audio
-        const filename = `${Date.now()}_${textHash}.mp3`;
-        const audioUrl = await saveAudioFile(audioBuffer, filename, bookId);
+        // 3. Save Audio with descriptive filename
+        // Include page and textbox info if available for easier identification in GCS
+        let filename;
+        if (pageNumber !== undefined && textBoxIndex !== undefined) {
+            filename = `p${pageNumber}_tb${textBoxIndex}_${textHash.substring(0, 8)}.mp3`;
+        } else if (pageNumber !== undefined) {
+            filename = `p${pageNumber}_${textHash.substring(0, 8)}.mp3`;
+        } else {
+            filename = `${Date.now()}_${textHash.substring(0, 12)}.mp3`;
+        }
+        const audioUrl = await saveAudioFile(audioBuffer, filename, bookId, pageNumber);
 
         // 5. Save to Cache (handle duplicate key errors gracefully)
         try {
