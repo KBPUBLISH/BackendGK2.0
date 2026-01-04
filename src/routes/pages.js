@@ -133,14 +133,28 @@ router.post('/reorder', async (req, res) => {
             return res.status(400).json({ message: 'bookId and pageOrder array are required' });
         }
         
+        // Validate bookId
+        if (!mongoose.Types.ObjectId.isValid(bookId)) {
+            return res.status(400).json({ message: 'Invalid bookId format' });
+        }
+        
         console.log(`📄 Reordering ${pageOrder.length} pages for book ${bookId}`);
         
-        // Update each page's pageNumber - convert IDs to ObjectId for safety
-        const bulkOps = pageOrder.map(({ pageId, newPageNumber }) => ({
+        // Validate and filter valid page IDs, use strings directly (Mongoose auto-casts)
+        const validPageOrders = pageOrder.filter(({ pageId }) => {
+            if (!pageId || !mongoose.Types.ObjectId.isValid(pageId)) {
+                console.warn(`⚠️ Invalid pageId skipped: ${pageId}`);
+                return false;
+            }
+            return true;
+        });
+        
+        // Update each page's pageNumber - Mongoose auto-casts string IDs to ObjectId
+        const bulkOps = validPageOrders.map(({ pageId, newPageNumber }) => ({
             updateOne: {
                 filter: { 
-                    _id: new mongoose.Types.ObjectId(pageId), 
-                    bookId: new mongoose.Types.ObjectId(bookId) 
+                    _id: pageId, 
+                    bookId: bookId 
                 },
                 update: { $set: { pageNumber: newPageNumber } }
             }
