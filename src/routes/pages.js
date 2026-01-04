@@ -135,16 +135,20 @@ router.post('/reorder', async (req, res) => {
         
         console.log(`📄 Reordering ${pageOrder.length} pages for book ${bookId}`);
         
-        // Update each page's pageNumber in a transaction-like manner
+        // Update each page's pageNumber - convert IDs to ObjectId for safety
         const bulkOps = pageOrder.map(({ pageId, newPageNumber }) => ({
             updateOne: {
-                filter: { _id: pageId, bookId },
+                filter: { 
+                    _id: new mongoose.Types.ObjectId(pageId), 
+                    bookId: new mongoose.Types.ObjectId(bookId) 
+                },
                 update: { $set: { pageNumber: newPageNumber } }
             }
         }));
         
         if (bulkOps.length > 0) {
-            await Page.bulkWrite(bulkOps);
+            const result = await Page.bulkWrite(bulkOps);
+            console.log(`📄 BulkWrite result: ${result.modifiedCount} pages updated`);
         }
         
         // Return the updated pages sorted by new page number
@@ -155,7 +159,7 @@ router.post('/reorder', async (req, res) => {
         console.log(`✅ Pages reordered successfully`);
         res.json(updatedPages);
     } catch (error) {
-        console.error('❌ Error reordering pages:', error.message);
+        console.error('❌ Error reordering pages:', error.message, error.stack);
         res.status(500).json({ message: error.message });
     }
 });
