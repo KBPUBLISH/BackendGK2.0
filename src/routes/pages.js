@@ -125,56 +125,79 @@ router.delete('/:id', async (req, res) => {
 
 // POST reorder pages for a book
 // Body: { bookId, pageOrder: [{ pageId: string, newPageNumber: number }] }
+// Uses two-phase update to avoid duplicate key conflicts on unique index
 router.post('/reorder', async (req, res) => {
     try {
         const { bookId, pageOrder } = req.body;
+        
+        console.log(`📄 Reorder request received:`, { bookId, pageOrderCount: pageOrder?.length });
         
         if (!bookId || !pageOrder || !Array.isArray(pageOrder)) {
             return res.status(400).json({ message: 'bookId and pageOrder array are required' });
         }
         
-        // Validate bookId
-        if (!mongoose.Types.ObjectId.isValid(bookId)) {
+        // Convert bookId to string safely
+        const bookIdStr = bookId && bookId._id ? String(bookId._id) : String(bookId);
+        
+        // Validate bookId is a valid 24-char hex string
+        if (!bookIdStr || bookIdStr.length !== 24 || !/^[0-9a-fA-F]{24}$/.test(bookIdStr)) {
+            console.error(`❌ Invalid bookId format: ${bookIdStr} (length: ${bookIdStr?.length})`);
             return res.status(400).json({ message: 'Invalid bookId format' });
         }
         
-        console.log(`📄 Reordering ${pageOrder.length} pages for book ${bookId}`);
+        console.log(`📄 Reordering ${pageOrder.length} pages for book ${bookIdStr}`);
         
-        // Validate and filter valid page IDs, use strings directly (Mongoose auto-casts)
-        const validPageOrders = pageOrder.filter(({ pageId }) => {
-            if (!pageId || !mongoose.Types.ObjectId.isValid(pageId)) {
-                console.warn(`⚠️ Invalid pageId skipped: ${pageId}`);
-                return false;
+        // Validate and prepare page orders
+        const validPageOrders = [];
+        for (const item of pageOrder) {
+            const pageIdRaw = item.pageId;
+            const pageIdStr = pageIdRaw && pageIdRaw._id ? String(pageIdRaw._id) : String(pageIdRaw);
+            
+            if (!pageIdStr || pageIdStr.length !== 24 || !/^[0-9a-fA-F]{24}$/.test(pageIdStr)) {
+                console.warn(`⚠️ Invalid pageId skipped: ${pageIdStr}`);
+                continue;
             }
-            return true;
-        });
-        
-        // Update each page's pageNumber - Mongoose auto-casts string IDs to ObjectId
-        const bulkOps = validPageOrders.map(({ pageId, newPageNumber }) => ({
-            updateOne: {
-                filter: { 
-                    _id: pageId, 
-                    bookId: bookId 
-                },
-                update: { $set: { pageNumber: newPageNumber } }
-            }
-        }));
-        
-        if (bulkOps.length > 0) {
-            const result = await Page.bulkWrite(bulkOps);
-            console.log(`📄 BulkWrite result: ${result.modifiedCount} pages updated`);
+            
+            validPageOrders.push({
+                pageId: pageIdStr,
+                newPageNumber: item.newPageNumber
+            });
         }
         
+        // PHASE 1: Set all pages to temporary negative numbers to avoid conflicts
+        // (unique index is on bookId + pageNumber, negative numbers won't conflict)
+        console.log(`📄 Phase 1: Setting ${validPageOrders.length} pages to temporary negative numbers`);
+        for (let i = 0; i < validPageOrders.length; i++) {
+            const { pageId } = validPageOrders[i];
+            await Page.findOneAndUpdate(
+                { _id: pageId, bookId: bookIdStr },
+                { $set: { pageNumber: -(i + 1) } } // -1, -2, -3, etc.
+            );
+        }
+        
+        // PHASE 2: Set all pages to their final positive page numbers
+        console.log(`📄 Phase 2: Setting pages to final page numbers`);
+        let updatedCount = 0;
+        for (const { pageId, newPageNumber } of validPageOrders) {
+            const result = await Page.findOneAndUpdate(
+                { _id: pageId, bookId: bookIdStr },
+                { $set: { pageNumber: newPageNumber } }
+            );
+            if (result) updatedCount++;
+        }
+        
+        console.log(`📄 Updated ${updatedCount} pages`);
+        
         // Return the updated pages sorted by new page number
-        const updatedPages = await Page.find({ bookId })
+        const updatedPages = await Page.find({ bookId: bookIdStr })
             .populate('webView.gameId', 'url name coverImage gameType')
             .sort({ pageNumber: 1 });
             
-        console.log(`✅ Pages reordered successfully`);
+        console.log(`✅ Pages reordered successfully, returning ${updatedPages.length} pages`);
         res.json(updatedPages);
     } catch (error) {
-        console.error('❌ Error reordering pages:', error.message, error.stack);
-        res.status(500).json({ message: error.message });
+        console.error('❌ Error reordering pages:', error.name, error.message, error.stack);
+        res.status(500).json({ message: error.message, error: error.name });
     }
 });
 
